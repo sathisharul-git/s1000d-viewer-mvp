@@ -1,0 +1,4 @@
+s1000d:
+  data-root: src/test/resources/test-data/csdb
+  jwt-secret: test-secret-test-secret-test-secret-test-secret
+  jwt-expiration-seconds: 3600

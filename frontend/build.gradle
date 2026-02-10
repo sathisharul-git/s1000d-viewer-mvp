@@ -1,0 +1,24 @@
+plugins {
+    id 'base'
+}
+
+def npmExecutable = System.getProperty('os.name').toLowerCase().contains('windows') ? 'npm.cmd' : 'npm'
+
+tasks.register('npmInstall', Exec) {
+    commandLine npmExecutable, 'install'
+}
+
+tasks.register('npmRunDev', Exec) {
+    dependsOn 'npmInstall'
+    commandLine npmExecutable, 'run', 'dev'
+}
+
+tasks.register('npmRunBuild', Exec) {
+    dependsOn 'npmInstall'
+    commandLine npmExecutable, 'run', 'build'
+}
+
+tasks.register('npmRunPreview', Exec) {
+    dependsOn 'npmInstall'
+    commandLine npmExecutable, 'run', 'preview'
+}

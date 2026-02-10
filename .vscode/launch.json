@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Backend: Spring Boot",
+      "request": "launch",
+      "mainClass": "com.example.s1000dviewer.S1000dViewerApplication",
+      "projectName": "backend"
+    }
+  ]
+}

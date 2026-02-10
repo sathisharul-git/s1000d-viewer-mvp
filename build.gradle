@@ -1,0 +1,20 @@
+plugins {
+    id 'base'
+}
+
+group = 'com.example'
+version = '0.1.0'
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+tasks.register('cleanAll') {
+    dependsOn ':backend:clean', ':frontend:clean'
+}
+
+tasks.named('clean') {
+    dependsOn 'cleanAll'
+}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dmodule xmlns:xlink="http://www.w3.org/1999/xlink">
+  <identAndStatusSection>
+    <dmAddress>
+      <dmIdent>
+        <dmCode modelIdentCode="AAA" systemDiffCode="AA" systemCode="00" subSystemCode="0" subSubSystemCode="00"
+          assyCode="00" disassyCode="00" disassyCodeVariant="A" infoCode="050" infoCodeVariant="A" itemLocationCode="C"/>
+      </dmIdent>
+      <dmAddressItems>
+        <dmTitle>
+          <techName>Inspect lever</techName>
+          <infoName>Check</infoName>
+        </dmTitle>
+      </dmAddressItems>
+    </dmAddress>
+  </identAndStatusSection>
+
+  <content>
+    <descript>
+      <levelledPara>
+        <title>Inspection criteria</title>
+        <para>The lever must return smoothly and must not slip.</para>
+        <para>If the lever slips, return to adjustment.</para>
+        <para>
+          Back:
+          <dmRef xlink:href="URN:S1000D:DMC-SAMPLE-AAA-00-00-00-00A-040A-C" xlink:type="simple">Adjustment DM</dmRef>
+        </para>
+      </levelledPara>
+    </descript>
+  </content>
+</dmodule>

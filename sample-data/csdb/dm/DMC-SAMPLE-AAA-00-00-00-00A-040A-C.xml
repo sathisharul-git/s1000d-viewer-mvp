@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dmodule xmlns:xlink="http://www.w3.org/1999/xlink">
+  <identAndStatusSection>
+    <dmAddress>
+      <dmIdent>
+        <dmCode modelIdentCode="AAA" systemDiffCode="AA" systemCode="00" subSystemCode="0" subSubSystemCode="00"
+          assyCode="00" disassyCode="00" disassyCodeVariant="A" infoCode="040" infoCodeVariant="A" itemLocationCode="C"/>
+      </dmIdent>
+      <dmAddressItems>
+        <dmTitle>
+          <techName>Adjust lever</techName>
+          <infoName>Procedure</infoName>
+        </dmTitle>
+      </dmAddressItems>
+    </dmAddress>
+  </identAndStatusSection>
+
+  <content>
+    <procedural>
+      <preliminaryRqmts>
+        <reqCondGroup>
+          <reqCond>Ensure the bicycle is stable.</reqCond>
+        </reqCondGroup>
+        <supportEquips>
+          <supportEquipDescr>Allen key 5mm</supportEquipDescr>
+        </supportEquips>
+      </preliminaryRqmts>
+
+      <mainProcedure>
+        <proceduralStep>
+          <para>Loosen the clamp bolt.</para>
+        </proceduralStep>
+        <proceduralStep>
+          <para>Adjust the lever position.</para>
+          <figure>
+            <title>Lever diagram</title>
+            <graphic xlink:href="URN:S1000D:ICN-SAMPLE-AAA-0001-A-01" xlink:type="simple" xlink:show="new"/>
+          </figure>
+        </proceduralStep>
+        <proceduralStep>
+          <para>Tighten the clamp bolt.</para>
+          <para>
+            Go to inspection:
+            <dmRef xlink:href="URN:S1000D:DMC-SAMPLE-AAA-00-00-00-00A-050A-C" xlink:type="simple">Inspection DM</dmRef>
+          </para>
+        </proceduralStep>
+      </mainProcedure>
+    </procedural>
+  </content>
+</dmodule>
