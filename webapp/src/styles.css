@@ -225,6 +225,12 @@ button:hover {
   margin-bottom: 0.7rem;
 }
 
+.preview-meta {
+  margin-bottom: 0.55rem;
+  color: #145f69;
+  font-size: 0.86rem;
+}
+
 .preview {
   border: 1px solid var(--line);
   border-radius: 0.7rem;

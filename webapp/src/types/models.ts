@@ -4,18 +4,42 @@ export type LoginResponse = {
   roles: string[];
 };
 
-export type ModuleSummary = {
-  dmId: string;
-  title: string;
-  aircraft: string;
-  engine: string;
-  icnId: string;
-  fileName: string;
+export type Applicability = {
+  aircraft: string[];
+  engine: string[];
 };
 
-export type ModuleContent = {
-  metadata: ModuleSummary;
-  htmlContent: string;
+export type ModuleListItem = {
+  dmId: string;
+  title: string;
+  applicability: Applicability;
+  source: "published" | "csdb";
+  hasPublishedPreview: boolean;
+};
+
+export type ModuleListResponse = {
+  filters: {
+    aircraft: string | null;
+    engine: string | null;
+  };
+  modules: ModuleListItem[];
+};
+
+export type ModuleRenderResponse = {
+  dmId: string;
+  source: "published" | "quick";
+  html: string;
+  meta: {
+    title: string;
+    applicability: Applicability;
+    applicabilityResult: "APPLICABLE" | "NOT_APPLICABLE" | "UNKNOWN";
+  };
+  assets: {
+    icns: string[];
+  };
+  links: {
+    dmRefs: string[];
+  };
 };
 
 export type Hotspot = {

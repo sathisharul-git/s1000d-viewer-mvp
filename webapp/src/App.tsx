@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, authStorage } from "./api/client";
-import type { Hotspot, ModuleContent, ModuleSummary, UserSummary } from "./types/models";
+import type { Hotspot, ModuleListItem, ModuleRenderResponse, UserSummary } from "./types/models";
 
 type ApplicabilityFilters = {
   aircraft: string;
@@ -18,6 +18,10 @@ function hasRole(roles: string[], role: string): boolean {
 
 function escapeRegex(raw: string): string {
   return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function formatApplicability(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "UNKNOWN";
 }
 
 function highlightHtml(html: string, term: string): string {
@@ -88,11 +92,11 @@ export function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [catalog, setCatalog] = useState<ModuleSummary[]>([]);
-  const [modules, setModules] = useState<ModuleSummary[]>([]);
+  const [catalog, setCatalog] = useState<ModuleListItem[]>([]);
+  const [modules, setModules] = useState<ModuleListItem[]>([]);
   const [filters, setFilters] = useState<ApplicabilityFilters>(defaultFilters);
   const [selectedDmId, setSelectedDmId] = useState("");
-  const [selectedContent, setSelectedContent] = useState<ModuleContent | null>(null);
+  const [selectedContent, setSelectedContent] = useState<ModuleRenderResponse | null>(null);
 
   const [graphicSvg, setGraphicSvg] = useState("");
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
@@ -110,12 +114,12 @@ export function App() {
   const rightPanelRef = useRef<HTMLElement | null>(null);
 
   const aircraftOptions = useMemo(
-    () => Array.from(new Set(catalog.map((m) => m.aircraft).filter((m) => m && m !== "ALL"))).sort(),
+    () => Array.from(new Set(catalog.flatMap((m) => m.applicability.aircraft))).sort(),
     [catalog],
   );
 
   const engineOptions = useMemo(
-    () => Array.from(new Set(catalog.map((m) => m.engine).filter((m) => m && m !== "ALL"))).sort(),
+    () => Array.from(new Set(catalog.flatMap((m) => m.applicability.engine))).sort(),
     [catalog],
   );
 
@@ -138,7 +142,7 @@ export function App() {
       return;
     }
     api.modules(token, defaultFilters)
-      .then(setCatalog)
+      .then((response) => setCatalog(response.modules))
       .catch((err: unknown) => setError(String(err)));
   }, [token]);
 
@@ -148,11 +152,11 @@ export function App() {
     }
 
     api.modules(token, filters)
-      .then((rows) => {
+      .then((response) => {
+        const rows = response.modules;
         setModules(rows);
         if (!rows.find((row) => row.dmId === selectedDmId)) {
-          const preferred = rows.find((row) => row.icnId && row.icnId.trim().length > 0) ?? rows[0];
-          setSelectedDmId(preferred?.dmId ?? "");
+          setSelectedDmId(rows[0]?.dmId ?? "");
         }
       })
       .catch((err: unknown) => setError(String(err)));
@@ -169,12 +173,12 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
-        const content = await api.moduleContent(token, selectedDmId, filters);
+        const content = await api.moduleRender(token, selectedDmId, filters);
         if (cancelled) {
           return;
         }
         setSelectedContent(content);
-        setActiveIcnId(content.metadata.icnId ?? "");
+        setActiveIcnId(content.assets.icns[0] ?? "");
       } catch (err) {
         if (cancelled) {
           return;
@@ -226,7 +230,7 @@ export function App() {
   }, [token, activeIcnId]);
 
   const highlighted = useMemo(
-    () => highlightHtml(selectedContent?.htmlContent ?? "<p>Select a data module to preview content.</p>", searchTerm),
+    () => highlightHtml(selectedContent?.html ?? "<p>Select a data module to preview content.</p>", searchTerm),
     [selectedContent, searchTerm],
   );
 
@@ -282,8 +286,8 @@ export function App() {
         api.modules(token, defaultFilters),
         api.modules(token, filters),
       ]);
-      setCatalog(catalogRows);
-      setModules(filteredRows);
+      setCatalog(catalogRows.modules);
+      setModules(filteredRows.modules);
 
       setUploadFile(null);
       setUploadTitle("");
@@ -447,7 +451,7 @@ export function App() {
               >
                 <strong>{module.dmId}</strong>
                 <span>{module.title}</span>
-                <small>{module.aircraft} / {module.engine}</small>
+                <small>{formatApplicability(module.applicability.aircraft)} / {formatApplicability(module.applicability.engine)}</small>
               </button>
             ))}
           </div>
@@ -491,6 +495,11 @@ export function App() {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
+          {selectedContent ? (
+            <div className="preview-meta">
+              Source: {selectedContent.source} | Applicability: {selectedContent.meta.applicabilityResult}
+            </div>
+          ) : null}
           <div className="preview dm-rendered" onClick={handlePreviewClick} dangerouslySetInnerHTML={{ __html: highlighted }} />
         </main>
 
@@ -513,7 +522,7 @@ export function App() {
                 onClick={() => {
                   if (hotspot.targetDmId) {
                     setFilters(defaultFilters);
-                    setSelectedDmId(hotspot.targetDmId);
+                    setSelectedDmId(resolveModuleDmId(hotspot.targetDmId));
                   }
                 }}
               >

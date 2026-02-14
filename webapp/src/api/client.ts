@@ -1,4 +1,11 @@
-import type { Hotspot, LoginResponse, ModuleContent, ModuleSummary, UploadResponse, UserSummary } from "../types/models";
+import type {
+  Hotspot,
+  LoginResponse,
+  ModuleListResponse,
+  ModuleRenderResponse,
+  UploadResponse,
+  UserSummary,
+} from "../types/models";
 
 const TOKEN_KEY = "s1000d.jwt";
 
@@ -51,10 +58,14 @@ export const api = {
   me: (token: string) => request<LoginResponse>("/api/auth/me", { method: "GET" }, token),
 
   modules: (token: string, filters: { aircraft: string; engine: string }) =>
-    request<ModuleSummary[]>(`/api/modules${buildQuery(filters)}`, { method: "GET" }, token),
+    request<ModuleListResponse>(`/api/modules${buildQuery(filters)}`, { method: "GET" }, token),
 
-  moduleContent: (token: string, dmId: string, filters: { aircraft: string; engine: string }) =>
-    request<ModuleContent>(`/api/modules/${encodeURIComponent(dmId)}${buildQuery(filters)}`, { method: "GET" }, token),
+  moduleRender: (token: string, dmId: string, filters: { aircraft: string; engine: string }) =>
+    request<ModuleRenderResponse>(
+      `/api/modules/${encodeURIComponent(dmId)}/render${buildQuery(filters)}`,
+      { method: "GET" },
+      token,
+    ),
 
   upload: (
     token: string,
