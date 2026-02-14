@@ -1,17 +1,22 @@
-import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { api, authStorage } from "./api/client";
+import { BreadcrumbBar } from "./components/breadcrumb/BreadcrumbBar";
+import { ThreePaneLayout, type PaneWidths } from "./components/layout/ThreePaneLayout";
+import { type ApplicabilityFilters, defaultApplicabilityFilters } from "./types/filters";
 import type { Hotspot, ModuleListItem, ModuleRenderResponse, UserSummary } from "./types/models";
 
-type ApplicabilityFilters = {
-  aircraft: string;
-  engine: string;
-  variant: string;
+type ViewerLayoutState = {
+  leftWidth: number;
+  rightWidth: number;
+  rightOpen: boolean;
 };
 
-const defaultFilters: ApplicabilityFilters = {
-  aircraft: "",
-  engine: "",
-  variant: "",
+
+const layoutStorageKey = "s1000d.viewer.layout.v3";
+const defaultLayoutState: ViewerLayoutState = {
+  leftWidth: 320,
+  rightWidth: 360,
+  rightOpen: false,
 };
 
 function hasRole(roles: string[], role: string): boolean {
@@ -22,8 +27,36 @@ function escapeRegex(raw: string): string {
   return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function formatApplicability(values: string[]): string {
-  return values.length > 0 ? values.join(", ") : "UNKNOWN";
+function readLayoutState(): ViewerLayoutState {
+  if (typeof window === "undefined") {
+    return defaultLayoutState;
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(layoutStorageKey) ?? "");
+    if (
+      typeof parsed.leftWidth === "number" &&
+      typeof parsed.rightWidth === "number" &&
+      typeof parsed.rightOpen === "boolean"
+    ) {
+      return {
+        leftWidth: Math.max(260, Math.min(560, parsed.leftWidth)),
+        rightWidth: Math.max(300, Math.min(680, parsed.rightWidth)),
+        rightOpen: parsed.rightOpen,
+      };
+    }
+  } catch {
+    return defaultLayoutState;
+  }
+
+  return defaultLayoutState;
+}
+
+function writeLayoutState(next: ViewerLayoutState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(layoutStorageKey, JSON.stringify(next));
 }
 
 function highlightHtml(html: string, term: string): string {
@@ -85,6 +118,24 @@ function highlightHtml(html: string, term: string): string {
   }
 }
 
+function detectGraphicId(target: HTMLElement): string {
+  const graphicNode = target.closest<HTMLElement>("[data-icn-id], [data-icn], [data-icnref], [data-icn-ref]");
+  if (graphicNode) {
+    return (
+      graphicNode.getAttribute("data-icn-id") ??
+      graphicNode.getAttribute("data-icn") ??
+      graphicNode.getAttribute("data-icnref") ??
+      graphicNode.getAttribute("data-icn-ref") ??
+      ""
+    ).trim();
+  }
+
+  const link = target.closest<HTMLAnchorElement>("a[href]");
+  const href = link?.getAttribute("href") ?? "";
+  const hrefMatch = href.match(/(ICN-[A-Za-z0-9\-_.]+)/);
+  return (hrefMatch?.[1] ?? "").trim();
+}
+
 export function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -96,14 +147,18 @@ export function App() {
 
   const [catalog, setCatalog] = useState<ModuleListItem[]>([]);
   const [modules, setModules] = useState<ModuleListItem[]>([]);
-  const [filters, setFilters] = useState<ApplicabilityFilters>(defaultFilters);
+  const [filters, setFilters] = useState<ApplicabilityFilters>(defaultApplicabilityFilters);
+  const [moduleSearch, setModuleSearch] = useState("");
+
   const [selectedDmId, setSelectedDmId] = useState("");
   const [selectedContent, setSelectedContent] = useState<ModuleRenderResponse | null>(null);
+  const [selectedGraphicId, setSelectedGraphicId] = useState("");
 
   const [graphicSvg, setGraphicSvg] = useState("");
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeIcnId, setActiveIcnId] = useState("");
+  const [layout, setLayout] = useState<ViewerLayoutState>(() => readLayoutState());
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTitle, setUploadTitle] = useState("");
@@ -114,7 +169,11 @@ export function App() {
   const [showUpload, setShowUpload] = useState(false);
 
   const [users, setUsers] = useState<UserSummary[]>([]);
-  const rightPanelRef = useRef<HTMLElement | null>(null);
+  const [showUsers, setShowUsers] = useState(false);
+
+  useEffect(() => {
+    writeLayoutState(layout);
+  }, [layout]);
 
   const aircraftOptions = useMemo(
     () => Array.from(new Set(catalog.flatMap((m) => m.applicability.aircraft))).sort(),
@@ -130,6 +189,16 @@ export function App() {
     () => Array.from(new Set(catalog.flatMap((m) => m.applicability.variant))).sort(),
     [catalog],
   );
+
+  const filteredModules = useMemo(() => {
+    const needle = moduleSearch.trim().toLowerCase();
+    if (!needle) {
+      return modules;
+    }
+    return modules.filter(
+      (module) => module.dmId.toLowerCase().includes(needle) || module.title.toLowerCase().includes(needle),
+    );
+  }, [moduleSearch, modules]);
 
   useEffect(() => {
     if (!token) {
@@ -149,7 +218,7 @@ export function App() {
     if (!token) {
       return;
     }
-    api.modules(token, defaultFilters)
+    api.modules(token, defaultApplicabilityFilters)
       .then((response) => setCatalog(response.modules))
       .catch((err: unknown) => setError(String(err)));
   }, [token]);
@@ -158,7 +227,6 @@ export function App() {
     if (!token) {
       return;
     }
-
     api.modules(token, filters)
       .then((response) => {
         const rows = response.modules;
@@ -168,11 +236,12 @@ export function App() {
         }
       })
       .catch((err: unknown) => setError(String(err)));
-  }, [token, filters, selectedDmId]);
+  }, [token, filters]);
 
   useEffect(() => {
     if (!token || !selectedDmId) {
       setSelectedContent(null);
+      setSelectedGraphicId("");
       setGraphicSvg("");
       setHotspots([]);
       return;
@@ -186,13 +255,16 @@ export function App() {
           return;
         }
         setSelectedContent(content);
-        setActiveIcnId(content.assets.icns[0] ?? "");
+        setSelectedGraphicId("");
+        setGraphicSvg("");
+        setHotspots([]);
       } catch (err) {
         if (cancelled) {
           return;
         }
         setError(String(err));
         setSelectedContent(null);
+        setSelectedGraphicId("");
         setGraphicSvg("");
         setHotspots([]);
       }
@@ -201,10 +273,10 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [token, selectedDmId, filters]);
+  }, [filters, selectedDmId, token]);
 
   useEffect(() => {
-    if (!token || !activeIcnId) {
+    if (!token || !selectedGraphicId) {
       setGraphicSvg("");
       setHotspots([]);
       return;
@@ -213,10 +285,7 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [svg, hs] = await Promise.all([
-          api.graphic(token, activeIcnId),
-          api.hotspots(token, activeIcnId),
-        ]);
+        const [svg, hs] = await Promise.all([api.graphic(token, selectedGraphicId), api.hotspots(token, selectedGraphicId)]);
         if (cancelled) {
           return;
         }
@@ -235,11 +304,11 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [token, activeIcnId]);
+  }, [selectedGraphicId, token]);
 
   const highlighted = useMemo(
     () => highlightHtml(selectedContent?.html ?? "<p>Select a data module to preview content.</p>", searchTerm),
-    [selectedContent, searchTerm],
+    [searchTerm, selectedContent],
   );
 
   function logout() {
@@ -249,8 +318,13 @@ export function App() {
     setSelectedContent(null);
     setGraphicSvg("");
     setHotspots([]);
+    setSelectedGraphicId("");
+    setSelectedDmId("");
+    setCatalog([]);
+    setModules([]);
     setShowUpload(false);
-    setActiveIcnId("");
+    setShowUsers(false);
+    setUsers([]);
     authStorage.clear();
   }
 
@@ -292,7 +366,7 @@ export function App() {
       });
 
       const [catalogRows, filteredRows] = await Promise.all([
-        api.modules(token, defaultFilters),
+        api.modules(token, defaultApplicabilityFilters),
         api.modules(token, filters),
       ]);
       setCatalog(catalogRows.modules);
@@ -310,13 +384,13 @@ export function App() {
     }
   }
 
-  function activateGraphic(icnId: string) {
-    const value = icnId.trim();
-    if (!value) {
+  function openGraphic(icnId: string) {
+    const normalized = icnId.trim();
+    if (!normalized) {
       return;
     }
-    setActiveIcnId(value);
-    rightPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSelectedGraphicId(normalized);
+    setLayout((prev) => ({ ...prev, rightOpen: true }));
   }
 
   function resolveModuleDmId(rawDmId: string): string {
@@ -324,17 +398,14 @@ export function App() {
     if (!normalized) {
       return "";
     }
-
-    const exact = modules.find((module) => module.dmId === normalized);
-    if (exact) {
-      return exact.dmId;
+    const fromVisible = modules.find((module) => module.dmId === normalized || module.dmId.startsWith(`${normalized}_`));
+    if (fromVisible) {
+      return fromVisible.dmId;
     }
-
-    const prefix = modules.find((module) => module.dmId.startsWith(`${normalized}_`));
-    if (prefix) {
-      return prefix.dmId;
+    const fromCatalog = catalog.find((module) => module.dmId === normalized || module.dmId.startsWith(`${normalized}_`));
+    if (fromCatalog) {
+      return fromCatalog.dmId;
     }
-
     return normalized;
   }
 
@@ -344,22 +415,19 @@ export function App() {
       return;
     }
 
-    const imageLink = target.closest<HTMLElement>("[data-icn-id]");
-    if (imageLink) {
-      const icnId = imageLink.getAttribute("data-icn-id");
-      if (icnId) {
-        event.preventDefault();
-        activateGraphic(icnId);
-      }
+    const icnId = detectGraphicId(target);
+    if (icnId) {
+      event.preventDefault();
+      openGraphic(icnId);
       return;
     }
 
-    const dmLink = target.closest<HTMLElement>("[data-dm-id]");
+    const dmLink = target.closest<HTMLElement>("[data-dm-id], [data-dmref]");
     if (dmLink) {
-      const dmId = dmLink.getAttribute("data-dm-id");
+      const dmId = (dmLink.getAttribute("data-dm-id") ?? dmLink.getAttribute("data-dmref") ?? "").trim();
       if (dmId) {
         event.preventDefault();
-        setFilters(defaultFilters);
+        setFilters(defaultApplicabilityFilters);
         setSelectedDmId(resolveModuleDmId(dmId));
       }
     }
@@ -371,9 +439,18 @@ export function App() {
     }
     try {
       setUsers(await api.users(token));
+      setShowUsers(true);
     } catch (err) {
       setError(String(err));
     }
+  }
+
+  function handlePaneResize(next: PaneWidths) {
+    setLayout((prev) => ({
+      ...prev,
+      leftWidth: next.leftWidth,
+      rightWidth: next.rightWidth,
+    }));
   }
 
   if (!token) {
@@ -408,6 +485,7 @@ export function App() {
 
   const canUpload = hasRole(roles, "ROLE_ADMIN") || hasRole(roles, "ROLE_ENGINEER");
   const isAdmin = hasRole(roles, "ROLE_ADMIN");
+  const selectedDmLabel = selectedContent?.meta.title || selectedDmId || "No module selected";
 
   return (
     <div className="app-shell">
@@ -416,156 +494,203 @@ export function App() {
           <h1>S1000D Viewer</h1>
           <p>{userNameDisplay} ({roles.join(", ")})</p>
         </div>
-        <button onClick={logout}>Logout</button>
+        <div className="top-actions">
+          {canUpload ? (
+            <button type="button" className={showUpload ? "action-btn active" : "action-btn"} onClick={() => setShowUpload((open) => !open)}>
+              {showUpload ? "Hide Upload" : "Upload Module"}
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
+              type="button"
+              className={showUsers ? "action-btn active" : "action-btn"}
+              onClick={() => {
+                if (showUsers) {
+                  setShowUsers(false);
+                } else {
+                  void loadUsers();
+                }
+              }}
+            >
+              {showUsers ? "Hide Users" : "Load Users"}
+            </button>
+          ) : null}
+          <button type="button" className="action-btn danger" onClick={logout}>
+            Logout
+          </button>
+        </div>
       </header>
+
+      <BreadcrumbBar
+        selectedDmLabel={selectedDmLabel}
+        selectedGraphicId={selectedGraphicId}
+        filters={filters}
+        aircraftOptions={aircraftOptions}
+        engineOptions={engineOptions}
+        variantOptions={variantOptions}
+        onApplyFilters={setFilters}
+      />
 
       {error ? <div className="error floating">{error}</div> : null}
 
-      <section className="workspace">
-        <aside className="panel left">
-          <div className="panel-title">Modules</div>
+      {showUpload && canUpload ? (
+        <section className="utility-panel">
+          <form className="upload-grid" onSubmit={handleUpload}>
+            <input type="file" accept=".xml" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
+            <input placeholder="Title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
+            <input placeholder="Aircraft" value={uploadAircraft} onChange={(e) => setUploadAircraft(e.target.value)} />
+            <input placeholder="Engine" value={uploadEngine} onChange={(e) => setUploadEngine(e.target.value)} />
+            <input placeholder="Variant" value={uploadVariant} onChange={(e) => setUploadVariant(e.target.value)} />
+            <input placeholder="ICN ID" value={uploadIcnId} onChange={(e) => setUploadIcnId(e.target.value)} />
+            <button type="submit">Upload</button>
+          </form>
+        </section>
+      ) : null}
 
-          <div className="filters">
-            <label>
-              Aircraft
-              <select
-                value={filters.aircraft}
-                onChange={(event) => setFilters((prev) => ({ ...prev, aircraft: event.target.value }))}
-              >
-                <option value="">All</option>
-                {aircraftOptions.map((value) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Engine
-              <select
-                value={filters.engine}
-                onChange={(event) => setFilters((prev) => ({ ...prev, engine: event.target.value }))}
-              >
-                <option value="">All</option>
-                {engineOptions.map((value) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Variant
-              <select
-                value={filters.variant}
-                onChange={(event) => setFilters((prev) => ({ ...prev, variant: event.target.value }))}
-              >
-                <option value="">All</option>
-                {variantOptions.map((value) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="module-list">
-            {modules.map((module) => (
-              <button
-                key={module.dmId}
-                className={module.dmId === selectedDmId ? "module-item active" : "module-item"}
-                onClick={() => setSelectedDmId(module.dmId)}
-              >
-                <strong>{module.dmId}</strong>
-                <span>{module.title}</span>
-                <small>
-                  {formatApplicability(module.applicability.aircraft)} / {formatApplicability(module.applicability.engine)} / {formatApplicability(module.applicability.variant)}
-                </small>
-              </button>
+      {showUsers && isAdmin ? (
+        <section className="utility-panel users-panel">
+          <div className="users-list">
+            {users.map((u) => (
+              <div key={u.username} className="user-row">
+                <strong>{u.username}</strong>
+                <span>{u.roles.join(", ")}</span>
+              </div>
             ))}
           </div>
+        </section>
+      ) : null}
 
-          {canUpload ? (
-            <div className="upload-zone">
-              <button type="button" className="upload-toggle" onClick={() => setShowUpload((open) => !open)}>
-                {showUpload ? "Hide Upload Module" : "Upload Module"}
-              </button>
-              {showUpload ? (
-                <form className="upload" onSubmit={handleUpload}>
-                  <input type="file" accept=".xml" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
-                  <input placeholder="Title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
-                  <input placeholder="Aircraft" value={uploadAircraft} onChange={(e) => setUploadAircraft(e.target.value)} />
-                  <input placeholder="Engine" value={uploadEngine} onChange={(e) => setUploadEngine(e.target.value)} />
-                  <input placeholder="Variant" value={uploadVariant} onChange={(e) => setUploadVariant(e.target.value)} />
-                  <input placeholder="ICN ID" value={uploadIcnId} onChange={(e) => setUploadIcnId(e.target.value)} />
-                  <button type="submit">Upload</button>
-                </form>
-              ) : null}
+      <ThreePaneLayout
+        leftWidth={layout.leftWidth}
+        rightWidth={layout.rightWidth}
+        rightCollapsed={!layout.rightOpen}
+        onWidthsChange={handlePaneResize}
+        left={
+          <aside className="panel">
+            <div className="panel-title">Data Modules</div>
+            <div className="left-module-controls">
+              <input
+                className="module-search"
+                value={moduleSearch}
+                onChange={(event) => setModuleSearch(event.target.value)}
+                placeholder="Filter module names"
+              />
             </div>
-          ) : null}
 
-          {isAdmin ? (
-            <div className="admin-tools">
-              <button onClick={loadUsers}>Load Users</button>
-              {users.map((u) => (
-                <div key={u.username} className="user-row">
-                  <strong>{u.username}</strong>
-                  <span>{u.roles.join(", ")}</span>
-                </div>
+            <div className="module-list names-only">
+              {filteredModules.map((module) => (
+                <button
+                  key={module.dmId}
+                  type="button"
+                  className={module.dmId === selectedDmId ? "module-row active" : "module-row"}
+                  onClick={() => setSelectedDmId(module.dmId)}
+                  title={module.title}
+                >
+                  {module.dmId}
+                </button>
               ))}
             </div>
-          ) : null}
-        </aside>
+            <div className="module-footnote">{filteredModules.length} modules</div>
+          </aside>
+        }
+        center={
+          <main className="panel">
+            <div className="panel-title">Preview</div>
+            <input
+              className="search"
+              placeholder="Search and highlight text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+            {selectedContent ? (
+              <div className="preview-meta">
+                <span className="meta-chip">Source: {selectedContent.source}</span>
+                <span className={`applicability-badge ${selectedContent.meta.applicabilityResult.toLowerCase()}`}>
+                  {selectedContent.meta.applicabilityResult}
+                </span>
+                <span className="meta-note" title={selectedContent.meta.applicabilityReason}>
+                  {selectedContent.meta.applicabilityReason}
+                </span>
+              </div>
+            ) : null}
 
-        <main className="panel center">
-          <div className="panel-title">Preview</div>
-          <input
-            className="search"
-            placeholder="Search and highlight text"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-          {selectedContent ? (
-            <div className="preview-meta">
-              <span>Source: {selectedContent.source}</span>
-              <span
-                className={`applicability-badge ${selectedContent.meta.applicabilityResult.toLowerCase()}`}
-                title={selectedContent.meta.applicabilityReason}
-              >
-                {selectedContent.meta.applicabilityResult}
-              </span>
-              <span title={selectedContent.meta.applicabilityReason}>
-                {selectedContent.meta.applicabilityReason}
-              </span>
-            </div>
-          ) : null}
-          <div className="preview dm-rendered" onClick={handlePreviewClick} dangerouslySetInnerHTML={{ __html: highlighted }} />
-        </main>
+            {selectedContent?.assets.icns.length ? (
+              <div className="preview-assets">
+                {selectedContent.assets.icns.map((icnId) => (
+                  <button
+                    key={icnId}
+                    type="button"
+                    className={icnId === selectedGraphicId ? "asset-btn active" : "asset-btn"}
+                    onClick={() => openGraphic(icnId)}
+                  >
+                    Open Graphic: {icnId}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-        <aside className="panel right" ref={rightPanelRef}>
-          <div className="panel-title">Graphics & Hotspots</div>
-          <div className="graphic-meta">{activeIcnId ? `Selected image: ${activeIcnId}` : "No image selected."}</div>
-          <div className="graphic-wrap">
-            {graphicSvg ? <div className="graphic-svg" dangerouslySetInnerHTML={{ __html: graphicSvg }} /> : <p>No image available.</p>}
-            {hotspots.map((hotspot) => (
+            <div className="preview dm-rendered" onClick={handlePreviewClick} dangerouslySetInnerHTML={{ __html: highlighted }} />
+          </main>
+        }
+        right={
+          <aside className={layout.rightOpen ? "panel right-panel" : "panel right-panel collapsed"}>
+            <div className="right-panel-header">
+              <div className="panel-title">Graphics</div>
               <button
-                key={hotspot.id}
-                className="hotspot"
-                style={{
-                  left: `${hotspot.x}%`,
-                  top: `${hotspot.y}%`,
-                  width: `${hotspot.w}%`,
-                  height: `${hotspot.h}%`,
-                }}
-                title={hotspot.label}
-                onClick={() => {
-                  if (hotspot.targetDmId) {
-                    setFilters(defaultFilters);
-                    setSelectedDmId(resolveModuleDmId(hotspot.targetDmId));
-                  }
-                }}
+                type="button"
+                className="collapse-btn"
+                onClick={() =>
+                  setLayout((prev) => ({
+                    ...prev,
+                    rightOpen: !prev.rightOpen,
+                  }))
+                }
+                title={layout.rightOpen ? "Collapse panel" : "Open panel"}
               >
-                <span>{hotspot.label}</span>
+                {layout.rightOpen ? "Collapse" : "Open"}
               </button>
-            ))}
-          </div>
-        </aside>
-      </section>
+            </div>
+
+            {layout.rightOpen ? (
+              <>
+                <div className="graphic-meta">
+                  {selectedGraphicId ? `Selected graphic: ${selectedGraphicId}` : "Select a graphic from preview to load SVG."}
+                </div>
+                {!selectedGraphicId ? (
+                  <div className="graphics-empty">Select a graphic in Preview to enable this panel.</div>
+                ) : (
+                  <div className="graphic-wrap">
+                    {graphicSvg ? <div className="graphic-svg" dangerouslySetInnerHTML={{ __html: graphicSvg }} /> : <p>No image available.</p>}
+                    {hotspots.map((hotspot) => (
+                      <button
+                        key={hotspot.id}
+                        className="hotspot"
+                        style={{
+                          left: `${hotspot.x}%`,
+                          top: `${hotspot.y}%`,
+                          width: `${hotspot.w}%`,
+                          height: `${hotspot.h}%`,
+                        }}
+                        title={hotspot.label}
+                        onClick={() => {
+                          if (hotspot.targetDmId) {
+                            setFilters(defaultApplicabilityFilters);
+                            setSelectedDmId(resolveModuleDmId(hotspot.targetDmId));
+                          }
+                        }}
+                      >
+                        <span>{hotspot.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="graphics-collapsed-hint">Graphics</div>
+            )}
+          </aside>
+        }
+      />
     </div>
   );
 }
