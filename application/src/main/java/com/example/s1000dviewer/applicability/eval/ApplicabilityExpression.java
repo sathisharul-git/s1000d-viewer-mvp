@@ -1,4 +1,4 @@
-package com.example.s1000dviewer.applicability;
+package com.example.s1000dviewer.applicability.eval;
 
 import java.util.List;
 

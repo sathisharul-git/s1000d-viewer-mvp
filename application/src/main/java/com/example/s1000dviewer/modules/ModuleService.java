@@ -3,13 +3,12 @@ package com.example.s1000dviewer.modules;
 import com.example.s1000dviewer.adapters.fs.FsDataRepository;
 import com.example.s1000dviewer.adapters.fs.PublishedManifestEntry;
 import com.example.s1000dviewer.applicability.ApplicabilityContext;
-import com.example.s1000dviewer.applicability.ApplicabilityMatchDecision;
-import com.example.s1000dviewer.applicability.ApplicabilityMatcher;
+import com.example.s1000dviewer.applicability.ApplicabilityDecision;
 import com.example.s1000dviewer.applicability.ApplicabilityFeatureFlags;
+import com.example.s1000dviewer.applicability.ApplicabilityInfo;
 import com.example.s1000dviewer.applicability.ApplicabilityRuleEngine;
-import com.example.s1000dviewer.applicability.ApplicabilityEvaluator;
-import com.example.s1000dviewer.applicability.ApplicabilityProvider;
-import com.example.s1000dviewer.applicability.ApplicabilityResolution;
+import com.example.s1000dviewer.applicability.ApplicabilityService;
+import com.example.s1000dviewer.applicability.eval.ApplicabilityEvaluator;
 import com.example.s1000dviewer.domain.Applicability;
 import com.example.s1000dviewer.domain.ApplicabilityResult;
 import com.example.s1000dviewer.domain.DataModuleDescriptor;
@@ -43,8 +42,7 @@ public class ModuleService {
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
 
     private final FsDataRepository repository;
-    private final ApplicabilityProvider applicabilityProvider;
-    private final ApplicabilityMatcher applicabilityMatcher;
+    private final ApplicabilityService applicabilityService;
     private final ApplicabilityFeatureFlags applicabilityFeatureFlags;
     private final ApplicabilityEvaluator applicabilityEvaluator;
     private final ApplicabilityRuleEngine applicabilityRuleEngine;
@@ -54,8 +52,7 @@ public class ModuleService {
 
     public ModuleService(
         FsDataRepository repository,
-        ApplicabilityProvider applicabilityProvider,
-        ApplicabilityMatcher applicabilityMatcher,
+        ApplicabilityService applicabilityService,
         ApplicabilityFeatureFlags applicabilityFeatureFlags,
         ApplicabilityEvaluator applicabilityEvaluator,
         ApplicabilityRuleEngine applicabilityRuleEngine,
@@ -64,8 +61,7 @@ public class ModuleService {
         ObjectMapper objectMapper
     ) {
         this.repository = repository;
-        this.applicabilityProvider = applicabilityProvider;
-        this.applicabilityMatcher = applicabilityMatcher;
+        this.applicabilityService = applicabilityService;
         this.applicabilityFeatureFlags = applicabilityFeatureFlags;
         this.applicabilityEvaluator = applicabilityEvaluator;
         this.applicabilityRuleEngine = applicabilityRuleEngine;
@@ -79,8 +75,8 @@ public class ModuleService {
 
         List<ModuleListItemResponse> modules = new ArrayList<>();
         for (DataModuleDescriptor descriptor : resolveDescriptors()) {
-            ApplicabilityMatchDecision decision = applicabilityMatcher.evaluate(descriptor.applicability(), context);
-            if (!applicabilityMatcher.includeInModuleList(decision)) {
+            ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
+            if (!applicabilityService.includeInModuleList(decision)) {
                 continue;
             }
             modules.add(new ModuleListItemResponse(
@@ -109,17 +105,17 @@ public class ModuleService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module content not found");
         }
 
-        ApplicabilityMatchDecision decision = applicabilityMatcher.evaluate(descriptor.applicability(), context);
+        ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
         ApplicabilityResult applicabilityResult = decision.result();
-        if (applicabilityFeatureFlags.getPhase3().isEnabled()) {
-            ApplicabilityResult phase3 = applicabilityRuleEngine.evaluateRules(dmId, context);
-            if (phase3 == ApplicabilityResult.NOT_APPLICABLE) {
+        if (applicabilityFeatureFlags.getPolicyEnforcement().isEnabled()) {
+            ApplicabilityResult policyResult = applicabilityRuleEngine.evaluateRules(dmId, context);
+            if (policyResult == ApplicabilityResult.NOT_APPLICABLE) {
                 applicabilityResult = ApplicabilityResult.NOT_APPLICABLE;
             }
         }
-        if (applicabilityFeatureFlags.getPhase2().isEnabled()) {
-            // TODO Phase 2: section-level applicability expression comes from parsed DM nodes.
-            applicabilityEvaluator.isApplicable("phase2-placeholder", context);
+        if (applicabilityFeatureFlags.getFragmentEvaluation().isEnabled()) {
+            // TODO: section-level applicability expression comes from parsed DM nodes.
+            applicabilityEvaluator.isApplicable("fragment-evaluation-placeholder", context);
         }
         RenderedDm rendered = renderFacade.render(descriptor, applicabilityResult);
 
@@ -236,8 +232,8 @@ public class ModuleService {
             extractFirstIcnFromXml(dmId)
         );
 
-        ApplicabilityResolution applicabilityResolution = applicabilityProvider.resolve(dmId);
-        Applicability applicability = applicabilityResolution.applicability();
+        ApplicabilityInfo applicabilityInfo = applicabilityService.resolve(dmId);
+        Applicability applicability = applicabilityInfo.applicability();
         boolean hasPublished = repository.hasPublishedHtml(dmId);
         String source = hasPublished ? "published" : "csdb";
 
@@ -245,7 +241,7 @@ public class ModuleService {
             dmId,
             title,
             applicability,
-            applicabilityResolution.source().toApiValue(),
+            applicabilityInfo.source().toApiValue(),
             source,
             hasPublished,
             primaryIcn
@@ -360,3 +356,4 @@ public class ModuleService {
         return List.of(normalized);
     }
 }
+

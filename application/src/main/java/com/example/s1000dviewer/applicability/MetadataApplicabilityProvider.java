@@ -11,31 +11,31 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
-public class ManifestAndSidecarApplicabilityProvider implements ApplicabilityProvider {
+public class MetadataApplicabilityProvider implements ApplicabilityProvider {
 
     private final FsDataRepository repository;
 
-    public ManifestAndSidecarApplicabilityProvider(FsDataRepository repository) {
+    public MetadataApplicabilityProvider(FsDataRepository repository) {
         this.repository = repository;
     }
 
     @Override
-    public ApplicabilityResolution resolve(String dmId) {
+    public ApplicabilityInfo resolve(String dmId) {
         Map<String, PublishedManifestEntry> manifest = repository.readPublishedManifest();
         PublishedManifestEntry entry = manifest.get(dmId.toUpperCase(Locale.ROOT));
         if (entry != null && entry.applicability() != null && !entry.applicability().isUnknown()) {
-            return new ApplicabilityResolution(entry.applicability(), ApplicabilitySource.PUBLISHED);
+            return new ApplicabilityInfo(entry.applicability(), ApplicabilitySource.PUBLISHED);
         }
 
         Optional<JsonNode> sidecarNode = repository.readMetaNode(dmId);
         if (sidecarNode.isPresent()) {
             Applicability applicability = parseSidecarApplicability(sidecarNode.get());
             if (!applicability.isUnknown()) {
-                return new ApplicabilityResolution(applicability, ApplicabilitySource.META);
+                return new ApplicabilityInfo(applicability, ApplicabilitySource.META);
             }
         }
 
-        return new ApplicabilityResolution(Applicability.unknown(), ApplicabilitySource.NONE);
+        return new ApplicabilityInfo(Applicability.unknown(), ApplicabilitySource.NONE);
     }
 
     private Applicability parseSidecarApplicability(JsonNode node) {
@@ -83,3 +83,4 @@ public class ManifestAndSidecarApplicabilityProvider implements ApplicabilityPro
         return List.of(value);
     }
 }
+

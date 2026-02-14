@@ -19,7 +19,7 @@ class ApplicabilityMatcherTest {
             List.of("MOD-12")
         );
 
-        ApplicabilityMatchDecision decision = matcher.evaluate(
+        ApplicabilityDecision decision = matcher.evaluate(
             applicability,
             ApplicabilityContext.of("A320", "CFM56", "MOD-12")
         );
@@ -38,7 +38,7 @@ class ApplicabilityMatcherTest {
             List.of("MOD-12")
         );
 
-        ApplicabilityMatchDecision decision = matcher.evaluate(
+        ApplicabilityDecision decision = matcher.evaluate(
             applicability,
             ApplicabilityContext.of("A320", "LEAP-1A", "MOD-12")
         );
@@ -56,7 +56,7 @@ class ApplicabilityMatcherTest {
             List.of("MOD-12")
         );
 
-        ApplicabilityMatchDecision decision = matcher.evaluate(
+        ApplicabilityDecision decision = matcher.evaluate(
             applicability,
             ApplicabilityContext.of("A320", "CFM56", "MOD-12")
         );
@@ -66,3 +66,4 @@ class ApplicabilityMatcherTest {
         assertThat(matcher.includeInModuleList(decision)).isTrue();
     }
 }
+

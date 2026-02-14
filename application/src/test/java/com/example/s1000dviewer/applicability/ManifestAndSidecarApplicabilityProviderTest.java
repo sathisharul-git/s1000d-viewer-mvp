@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ManifestAndSidecarApplicabilityProviderTest {
+class MetadataApplicabilityProviderTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -47,8 +47,8 @@ class ManifestAndSidecarApplicabilityProviderTest {
             }
             """);
 
-        ManifestAndSidecarApplicabilityProvider provider = new ManifestAndSidecarApplicabilityProvider(repository());
-        ApplicabilityResolution result = provider.resolve(dmId);
+        MetadataApplicabilityProvider provider = new MetadataApplicabilityProvider(repository());
+        ApplicabilityInfo result = provider.resolve(dmId);
 
         assertThat(result.source()).isEqualTo(ApplicabilitySource.PUBLISHED);
         assertThat(result.applicability().aircraft()).containsExactly("A320");
@@ -71,8 +71,8 @@ class ManifestAndSidecarApplicabilityProviderTest {
             }
             """);
 
-        ManifestAndSidecarApplicabilityProvider provider = new ManifestAndSidecarApplicabilityProvider(repository());
-        ApplicabilityResolution result = provider.resolve(dmId);
+        MetadataApplicabilityProvider provider = new MetadataApplicabilityProvider(repository());
+        ApplicabilityInfo result = provider.resolve(dmId);
 
         assertThat(result.source()).isEqualTo(ApplicabilitySource.META);
         assertThat(result.applicability().aircraft()).containsExactly("A350");
@@ -83,9 +83,9 @@ class ManifestAndSidecarApplicabilityProviderTest {
     @Test
     void returnsNoneWhenNoApplicabilityMetadataExists() throws IOException {
         writeManifest("{\"modules\":[]}");
-        ManifestAndSidecarApplicabilityProvider provider = new ManifestAndSidecarApplicabilityProvider(repository());
+        MetadataApplicabilityProvider provider = new MetadataApplicabilityProvider(repository());
 
-        ApplicabilityResolution result = provider.resolve("DMC-SAMPLE-UNKNOWN");
+        ApplicabilityInfo result = provider.resolve("DMC-SAMPLE-UNKNOWN");
 
         assertThat(result.source()).isEqualTo(ApplicabilitySource.NONE);
         assertThat(result.applicability().isUnknown()).isTrue();
@@ -118,3 +118,4 @@ class ManifestAndSidecarApplicabilityProviderTest {
         Files.writeString(sidecarPath, json);
     }
 }
+

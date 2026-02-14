@@ -1,5 +1,6 @@
 package com.example.s1000dviewer.applicability;
 
 public interface ApplicabilityProvider {
-    ApplicabilityResolution resolve(String dmId);
+    ApplicabilityInfo resolve(String dmId);
 }
+

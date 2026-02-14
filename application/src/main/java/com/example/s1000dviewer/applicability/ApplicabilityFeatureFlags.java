@@ -5,18 +5,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "applicability")
 public class ApplicabilityFeatureFlags {
 
-    private final PhaseFlag phase2 = new PhaseFlag();
-    private final PhaseFlag phase3 = new PhaseFlag();
+    private final FeatureToggle fragmentEvaluation = new FeatureToggle();
+    private final FeatureToggle policyEnforcement = new FeatureToggle();
 
-    public PhaseFlag getPhase2() {
-        return phase2;
+    public FeatureToggle getFragmentEvaluation() {
+        return fragmentEvaluation;
     }
 
-    public PhaseFlag getPhase3() {
-        return phase3;
+    public FeatureToggle getPolicyEnforcement() {
+        return policyEnforcement;
     }
 
-    public static class PhaseFlag {
+    public static class FeatureToggle {
 
         private boolean enabled = false;
 
@@ -29,3 +29,4 @@ public class ApplicabilityFeatureFlags {
         }
     }
 }
+

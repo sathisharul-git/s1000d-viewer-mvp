@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApplicabilityMatcher {
 
-    public ApplicabilityMatchDecision evaluate(Applicability applicability, ApplicabilityContext context) {
+    public ApplicabilityDecision evaluate(Applicability applicability, ApplicabilityContext context) {
         DimensionDecision aircraft = evaluateDimension("aircraft", context.aircraft(), applicability == null ? List.of() : applicability.aircraft());
         DimensionDecision engine = evaluateDimension("engine", context.engine(), applicability == null ? List.of() : applicability.engine());
         DimensionDecision variant = evaluateDimension("variant", context.variant(), applicability == null ? List.of() : applicability.variant());
@@ -36,10 +36,10 @@ public class ApplicabilityMatcher {
             overall = ApplicabilityResult.UNKNOWN;
         }
 
-        return ApplicabilityMatchDecision.of(overall, String.join("; ", reasons));
+        return ApplicabilityDecision.of(overall, String.join("; ", reasons));
     }
 
-    public boolean includeInModuleList(ApplicabilityMatchDecision decision) {
+    public boolean includeInModuleList(ApplicabilityDecision decision) {
         return decision.result() != ApplicabilityResult.NOT_APPLICABLE;
     }
 
@@ -83,3 +83,4 @@ public class ApplicabilityMatcher {
     private record DimensionDecision(ApplicabilityResult result, String reason) {
     }
 }
+
