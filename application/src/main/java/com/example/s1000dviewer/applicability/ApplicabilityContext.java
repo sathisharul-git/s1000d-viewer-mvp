@@ -1,9 +1,9 @@
 package com.example.s1000dviewer.applicability;
 
-public record ApplicabilityContext(String aircraft, String engine) {
+public record ApplicabilityContext(String aircraft, String engine, String variant) {
 
-    public static ApplicabilityContext of(String aircraft, String engine) {
-        return new ApplicabilityContext(normalize(aircraft), normalize(engine));
+    public static ApplicabilityContext of(String aircraft, String engine, String variant) {
+        return new ApplicabilityContext(normalize(aircraft), normalize(engine), normalize(variant));
     }
 
     private static String normalize(String value) {

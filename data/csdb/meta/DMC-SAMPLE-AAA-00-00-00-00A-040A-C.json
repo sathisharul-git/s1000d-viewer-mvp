@@ -1,8 +1,10 @@
 {
+  "dmId": "DMC-SAMPLE-AAA-00-00-00-00A-040A-C",
   "title": "Adjust lever - Procedure",
   "icnId": "ICN-SAMPLE-AAA-0001-A-01",
   "applicability": {
     "aircraft": ["A320"],
-    "engine": ["CFM56"]
+    "engine": ["CFM56"],
+    "variant": ["MOD-12"]
   }
 }

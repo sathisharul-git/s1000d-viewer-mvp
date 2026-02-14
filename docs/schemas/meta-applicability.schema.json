@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/s1000d/meta-applicability.schema.json",
+  "title": "S1000D DM Meta Applicability",
+  "type": "object",
+  "required": ["dmId", "applicability"],
+  "properties": {
+    "dmId": {
+      "type": "string",
+      "pattern": "^DMC-[A-Za-z0-9._-]+$"
+    },
+    "title": { "type": "string" },
+    "icnId": { "type": "string" },
+    "applicability": {
+      "type": "object",
+      "properties": {
+        "aircraft": { "type": "array", "items": { "type": "string" } },
+        "engine": { "type": "array", "items": { "type": "string" } },
+        "variant": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

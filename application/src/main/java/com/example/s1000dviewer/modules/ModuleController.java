@@ -21,18 +21,20 @@ public class ModuleController {
     @GetMapping
     public ModuleListResponse listModules(
         @RequestParam(required = false) String aircraft,
-        @RequestParam(required = false) String engine
+        @RequestParam(required = false) String engine,
+        @RequestParam(required = false) String variant
     ) {
-        return moduleService.listModules(aircraft, engine);
+        return moduleService.listModules(aircraft, engine, variant);
     }
 
     @GetMapping("/{dmId}/render")
     public ModuleRenderResponse renderModule(
         @PathVariable String dmId,
         @RequestParam(required = false) String aircraft,
-        @RequestParam(required = false) String engine
+        @RequestParam(required = false) String engine,
+        @RequestParam(required = false) String variant
     ) {
-        return moduleService.renderModule(dmId, aircraft, engine);
+        return moduleService.renderModule(dmId, aircraft, engine, variant);
     }
 
     @PostMapping("/upload")
@@ -40,9 +42,10 @@ public class ModuleController {
         @RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine,
+        @RequestParam(required = false) String variant,
         @RequestParam(required = false) String title,
         @RequestParam(required = false) String icnId
     ) {
-        return moduleService.uploadModule(file, aircraft, engine, title, icnId);
+        return moduleService.uploadModule(file, aircraft, engine, variant, title, icnId);
     }
 }

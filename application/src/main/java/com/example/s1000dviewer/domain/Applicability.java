@@ -4,19 +4,20 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public record Applicability(List<String> aircraft, List<String> engine) {
+public record Applicability(List<String> aircraft, List<String> engine, List<String> variant) {
 
     public Applicability {
         aircraft = normalizeList(aircraft);
         engine = normalizeList(engine);
+        variant = normalizeList(variant);
     }
 
     public static Applicability unknown() {
-        return new Applicability(List.of(), List.of());
+        return new Applicability(List.of(), List.of(), List.of());
     }
 
     public boolean isUnknown() {
-        return aircraft.isEmpty() && engine.isEmpty();
+        return aircraft.isEmpty() && engine.isEmpty() && variant.isEmpty();
     }
 
     private static List<String> normalizeList(List<String> values) {

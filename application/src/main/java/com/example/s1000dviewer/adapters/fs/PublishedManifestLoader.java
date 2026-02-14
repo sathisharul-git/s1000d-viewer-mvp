@@ -59,7 +59,11 @@ public class PublishedManifestLoader {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return Applicability.unknown();
         }
-        return new Applicability(readStringList(node.path("aircraft")), readStringList(node.path("engine")));
+        return new Applicability(
+            readStringList(node.path("aircraft")),
+            readStringList(node.path("engine")),
+            readStringList(node.path("variant"))
+        );
     }
 
     private List<String> readStringList(JsonNode node) {

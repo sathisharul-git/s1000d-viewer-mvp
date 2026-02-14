@@ -5,7 +5,8 @@
       "title": "Published Adjust Lever",
       "applicability": {
         "aircraft": ["A320"],
-        "engine": ["CFM56"]
+        "engine": ["CFM56"],
+        "variant": ["MOD-12"]
       },
       "icns": ["ICN-SAMPLE-AAA-0001-A-01"],
       "dmRefs": ["DMC-SAMPLE-AAA-00-00-00-00A-050A-C"]

@@ -3,10 +3,12 @@ package com.example.s1000dviewer.modules;
 import com.example.s1000dviewer.adapters.fs.FsDataRepository;
 import com.example.s1000dviewer.adapters.fs.PublishedManifestEntry;
 import com.example.s1000dviewer.applicability.ApplicabilityContext;
-import com.example.s1000dviewer.applicability.ApplicabilityFilter;
+import com.example.s1000dviewer.applicability.ApplicabilityMatchDecision;
+import com.example.s1000dviewer.applicability.ApplicabilityMatcher;
 import com.example.s1000dviewer.applicability.ApplicabilityRuleEngine;
 import com.example.s1000dviewer.applicability.ApplicabilityEvaluator;
 import com.example.s1000dviewer.applicability.ApplicabilityProvider;
+import com.example.s1000dviewer.applicability.ApplicabilityResolution;
 import com.example.s1000dviewer.common.AppProperties;
 import com.example.s1000dviewer.domain.Applicability;
 import com.example.s1000dviewer.domain.ApplicabilityResult;
@@ -42,7 +44,7 @@ public class ModuleService {
 
     private final FsDataRepository repository;
     private final ApplicabilityProvider applicabilityProvider;
-    private final ApplicabilityFilter applicabilityFilter;
+    private final ApplicabilityMatcher applicabilityMatcher;
     private final ApplicabilityEvaluator applicabilityEvaluator;
     private final ApplicabilityRuleEngine applicabilityRuleEngine;
     private final RenderFacade renderFacade;
@@ -53,7 +55,7 @@ public class ModuleService {
     public ModuleService(
         FsDataRepository repository,
         ApplicabilityProvider applicabilityProvider,
-        ApplicabilityFilter applicabilityFilter,
+        ApplicabilityMatcher applicabilityMatcher,
         ApplicabilityEvaluator applicabilityEvaluator,
         ApplicabilityRuleEngine applicabilityRuleEngine,
         RenderFacade renderFacade,
@@ -63,7 +65,7 @@ public class ModuleService {
     ) {
         this.repository = repository;
         this.applicabilityProvider = applicabilityProvider;
-        this.applicabilityFilter = applicabilityFilter;
+        this.applicabilityMatcher = applicabilityMatcher;
         this.applicabilityEvaluator = applicabilityEvaluator;
         this.applicabilityRuleEngine = applicabilityRuleEngine;
         this.renderFacade = renderFacade;
@@ -72,13 +74,13 @@ public class ModuleService {
         this.appProperties = appProperties;
     }
 
-    public ModuleListResponse listModules(String aircraft, String engine) {
-        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine);
+    public ModuleListResponse listModules(String aircraft, String engine, String variant) {
+        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine, variant);
 
         List<ModuleListItemResponse> modules = new ArrayList<>();
         for (DataModuleDescriptor descriptor : resolveDescriptors()) {
-            ApplicabilityResult result = applicabilityFilter.evaluate(descriptor.applicability(), context);
-            if (!applicabilityFilter.includeInList(result)) {
+            ApplicabilityMatchDecision decision = applicabilityMatcher.evaluate(descriptor.applicability(), context);
+            if (!applicabilityMatcher.includeInModuleList(decision)) {
                 continue;
             }
             modules.add(new ModuleListItemResponse(
@@ -86,17 +88,20 @@ public class ModuleService {
                 descriptor.title(),
                 toApplicabilityResponse(descriptor.applicability()),
                 descriptor.source(),
-                descriptor.hasPublishedPreview()
+                descriptor.hasPublishedPreview(),
+                decision.result(),
+                decision.reason(),
+                descriptor.applicabilitySource()
             ));
         }
 
         modules.sort(Comparator.comparing(ModuleListItemResponse::dmId));
-        return new ModuleListResponse(new ModuleFiltersResponse(context.aircraft(), context.engine()), modules);
+        return new ModuleListResponse(new ModuleFiltersResponse(context.aircraft(), context.engine(), context.variant()), modules);
     }
 
-    public ModuleRenderResponse renderModule(String dmId, String aircraft, String engine) {
+    public ModuleRenderResponse renderModule(String dmId, String aircraft, String engine, String variant) {
         validateDmId(dmId);
-        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine);
+        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine, variant);
 
         DataModuleDescriptor descriptor = resolveDescriptor(dmId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not found"));
@@ -104,7 +109,8 @@ public class ModuleService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module content not found");
         }
 
-        ApplicabilityResult applicabilityResult = applicabilityFilter.evaluate(descriptor.applicability(), context);
+        ApplicabilityMatchDecision decision = applicabilityMatcher.evaluate(descriptor.applicability(), context);
+        ApplicabilityResult applicabilityResult = decision.result();
         if (appProperties.isPhase3RuleEngineEnabled()) {
             ApplicabilityResult phase3 = applicabilityRuleEngine.evaluateRules(dmId, context);
             if (phase3 == ApplicabilityResult.NOT_APPLICABLE) {
@@ -124,7 +130,9 @@ public class ModuleService {
             new ModuleRenderMetaResponse(
                 rendered.title(),
                 toApplicabilityResponse(rendered.applicability()),
-                rendered.applicabilityResult()
+                rendered.applicabilityResult(),
+                decision.reason(),
+                descriptor.applicabilitySource()
             ),
             new ModuleAssetsResponse(rendered.icns()),
             new ModuleLinksResponse(rendered.dmRefs())
@@ -135,6 +143,7 @@ public class ModuleService {
         MultipartFile file,
         String aircraft,
         String engine,
+        String variant,
         String title,
         String icnId
     ) {
@@ -160,17 +169,20 @@ public class ModuleService {
             Files.write(xmlPath, xmlBytes);
 
             Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("dmId", dmId);
             meta.put("title", blankToNull(title));
             meta.put("icnId", blankToNull(icnId));
 
             Map<String, Object> applicability = new LinkedHashMap<>();
             applicability.put("aircraft", toSingleList(aircraft));
             applicability.put("engine", toSingleList(engine));
+            applicability.put("variant", toSingleList(variant));
             meta.put("applicability", applicability);
 
             // Keep legacy fields for compatibility.
             meta.put("aircraft", blankToNull(aircraft));
             meta.put("engine", blankToNull(engine));
+            meta.put("variant", blankToNull(variant));
 
             Path metaPath = repository.csdbMetaDir().resolve(dmId + ".json").normalize();
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(metaPath.toFile(), meta);
@@ -224,15 +236,24 @@ public class ModuleService {
             extractFirstIcnFromXml(dmId)
         );
 
-        Applicability applicability = applicabilityProvider.resolve(dmId);
+        ApplicabilityResolution applicabilityResolution = applicabilityProvider.resolve(dmId);
+        Applicability applicability = applicabilityResolution.applicability();
         boolean hasPublished = repository.hasPublishedHtml(dmId);
         String source = hasPublished ? "published" : "csdb";
 
-        return new DataModuleDescriptor(dmId, title, applicability, source, hasPublished, primaryIcn);
+        return new DataModuleDescriptor(
+            dmId,
+            title,
+            applicability,
+            applicabilityResolution.source().toApiValue(),
+            source,
+            hasPublished,
+            primaryIcn
+        );
     }
 
     private ApplicabilityResponse toApplicabilityResponse(Applicability applicability) {
-        return new ApplicabilityResponse(applicability.aircraft(), applicability.engine());
+        return new ApplicabilityResponse(applicability.aircraft(), applicability.engine(), applicability.variant());
     }
 
     private String readMetaText(String dmId, String field) {

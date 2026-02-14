@@ -20,33 +20,38 @@ public class ManifestAndSidecarApplicabilityProvider implements ApplicabilityPro
     }
 
     @Override
-    public Applicability resolve(String dmId) {
+    public ApplicabilityResolution resolve(String dmId) {
         Map<String, PublishedManifestEntry> manifest = repository.readPublishedManifest();
         PublishedManifestEntry entry = manifest.get(dmId.toUpperCase(Locale.ROOT));
         if (entry != null && entry.applicability() != null && !entry.applicability().isUnknown()) {
-            return entry.applicability();
+            return new ApplicabilityResolution(entry.applicability(), ApplicabilitySource.PUBLISHED);
         }
 
         Optional<JsonNode> sidecarNode = repository.readMetaNode(dmId);
         if (sidecarNode.isPresent()) {
             Applicability applicability = parseSidecarApplicability(sidecarNode.get());
             if (!applicability.isUnknown()) {
-                return applicability;
+                return new ApplicabilityResolution(applicability, ApplicabilitySource.META);
             }
         }
 
-        return Applicability.unknown();
+        return new ApplicabilityResolution(Applicability.unknown(), ApplicabilitySource.NONE);
     }
 
     private Applicability parseSidecarApplicability(JsonNode node) {
         JsonNode applicabilityNode = node.path("applicability");
         if (applicabilityNode.isObject()) {
-            return new Applicability(readStringList(applicabilityNode.path("aircraft")), readStringList(applicabilityNode.path("engine")));
+            return new Applicability(
+                readStringList(applicabilityNode.path("aircraft")),
+                readStringList(applicabilityNode.path("engine")),
+                readStringList(applicabilityNode.path("variant"))
+            );
         }
 
         String aircraft = readLegacyValue(node.path("aircraft"));
         String engine = readLegacyValue(node.path("engine"));
-        return new Applicability(singletonOrEmpty(aircraft), singletonOrEmpty(engine));
+        String variant = readLegacyValue(node.path("variant"));
+        return new Applicability(singletonOrEmpty(aircraft), singletonOrEmpty(engine), singletonOrEmpty(variant));
     }
 
     private List<String> readStringList(JsonNode node) {
