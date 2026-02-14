@@ -10,7 +10,6 @@ import com.example.s1000dviewer.applicability.ApplicabilityRuleEngine;
 import com.example.s1000dviewer.applicability.ApplicabilityEvaluator;
 import com.example.s1000dviewer.applicability.ApplicabilityProvider;
 import com.example.s1000dviewer.applicability.ApplicabilityResolution;
-import com.example.s1000dviewer.common.AppProperties;
 import com.example.s1000dviewer.domain.Applicability;
 import com.example.s1000dviewer.domain.ApplicabilityResult;
 import com.example.s1000dviewer.domain.DataModuleDescriptor;
@@ -52,7 +51,6 @@ public class ModuleService {
     private final RenderFacade renderFacade;
     private final XmlValidationService xmlValidationService;
     private final ObjectMapper objectMapper;
-    private final AppProperties appProperties;
 
     public ModuleService(
         FsDataRepository repository,
@@ -63,8 +61,7 @@ public class ModuleService {
         ApplicabilityRuleEngine applicabilityRuleEngine,
         RenderFacade renderFacade,
         XmlValidationService xmlValidationService,
-        ObjectMapper objectMapper,
-        AppProperties appProperties
+        ObjectMapper objectMapper
     ) {
         this.repository = repository;
         this.applicabilityProvider = applicabilityProvider;
@@ -75,7 +72,6 @@ public class ModuleService {
         this.renderFacade = renderFacade;
         this.xmlValidationService = xmlValidationService;
         this.objectMapper = objectMapper;
-        this.appProperties = appProperties;
     }
 
     public ModuleListResponse listModules(String aircraft, String engine, String variant) {
@@ -115,7 +111,7 @@ public class ModuleService {
 
         ApplicabilityMatchDecision decision = applicabilityMatcher.evaluate(descriptor.applicability(), context);
         ApplicabilityResult applicabilityResult = decision.result();
-        if (appProperties.isPhase3RuleEngineEnabled()) {
+        if (applicabilityFeatureFlags.getPhase3().isEnabled()) {
             ApplicabilityResult phase3 = applicabilityRuleEngine.evaluateRules(dmId, context);
             if (phase3 == ApplicabilityResult.NOT_APPLICABLE) {
                 applicabilityResult = ApplicabilityResult.NOT_APPLICABLE;

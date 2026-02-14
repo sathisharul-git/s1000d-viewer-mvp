@@ -5,8 +5,6 @@ s1000d:
   data-root: ../data
   jwt-secret: change-me-in-real-env-change-me-in-real-env-change-me
   jwt-expiration-seconds: 28800
-  phase2-section-applicability-enabled: false
-  phase3-rule-engine-enabled: false
 
 applicability:
   phase2:
