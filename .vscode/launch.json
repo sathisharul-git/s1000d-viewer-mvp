@@ -5,8 +5,9 @@
       "type": "java",
       "name": "Backend: Spring Boot",
       "request": "launch",
-      "mainClass": "com.example.s1000dviewer.S1000dViewerApplication",
+      "mainClass": "com.s1000Dorg.viewer.S1000dViewerApplication",
       "projectName": "application"
     }
   ]
 }
+
