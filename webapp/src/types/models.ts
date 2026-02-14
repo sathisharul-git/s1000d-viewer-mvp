@@ -7,6 +7,7 @@ export type LoginResponse = {
 export type Applicability = {
   aircraft: string[];
   engine: string[];
+  variant: string[];
 };
 
 export type ModuleListItem = {
@@ -15,12 +16,16 @@ export type ModuleListItem = {
   applicability: Applicability;
   source: "published" | "csdb";
   hasPublishedPreview: boolean;
+  applicabilityResult: "APPLICABLE" | "NOT_APPLICABLE" | "UNKNOWN";
+  applicabilityReason: string;
+  applicabilitySource: "published" | "meta" | "none";
 };
 
 export type ModuleListResponse = {
   filters: {
     aircraft: string | null;
     engine: string | null;
+    variant: string | null;
   };
   modules: ModuleListItem[];
 };
@@ -33,6 +38,8 @@ export type ModuleRenderResponse = {
     title: string;
     applicability: Applicability;
     applicabilityResult: "APPLICABLE" | "NOT_APPLICABLE" | "UNKNOWN";
+    applicabilityReason: string;
+    applicabilitySource: "published" | "meta" | "none";
   };
   assets: {
     icns: string[];

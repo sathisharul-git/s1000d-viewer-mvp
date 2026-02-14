@@ -5,11 +5,13 @@ import type { Hotspot, ModuleListItem, ModuleRenderResponse, UserSummary } from 
 type ApplicabilityFilters = {
   aircraft: string;
   engine: string;
+  variant: string;
 };
 
 const defaultFilters: ApplicabilityFilters = {
   aircraft: "",
   engine: "",
+  variant: "",
 };
 
 function hasRole(roles: string[], role: string): boolean {
@@ -107,6 +109,7 @@ export function App() {
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadAircraft, setUploadAircraft] = useState("");
   const [uploadEngine, setUploadEngine] = useState("");
+  const [uploadVariant, setUploadVariant] = useState("");
   const [uploadIcnId, setUploadIcnId] = useState("");
   const [showUpload, setShowUpload] = useState(false);
 
@@ -120,6 +123,11 @@ export function App() {
 
   const engineOptions = useMemo(
     () => Array.from(new Set(catalog.flatMap((m) => m.applicability.engine))).sort(),
+    [catalog],
+  );
+
+  const variantOptions = useMemo(
+    () => Array.from(new Set(catalog.flatMap((m) => m.applicability.variant))).sort(),
     [catalog],
   );
 
@@ -279,6 +287,7 @@ export function App() {
         title: uploadTitle,
         aircraft: uploadAircraft,
         engine: uploadEngine,
+        variant: uploadVariant,
         icnId: uploadIcnId,
       });
 
@@ -293,6 +302,7 @@ export function App() {
       setUploadTitle("");
       setUploadAircraft("");
       setUploadEngine("");
+      setUploadVariant("");
       setUploadIcnId("");
       setShowUpload(false);
     } catch (err) {
@@ -440,6 +450,18 @@ export function App() {
                 ))}
               </select>
             </label>
+            <label>
+              Variant
+              <select
+                value={filters.variant}
+                onChange={(event) => setFilters((prev) => ({ ...prev, variant: event.target.value }))}
+              >
+                <option value="">All</option>
+                {variantOptions.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="module-list">
@@ -451,7 +473,9 @@ export function App() {
               >
                 <strong>{module.dmId}</strong>
                 <span>{module.title}</span>
-                <small>{formatApplicability(module.applicability.aircraft)} / {formatApplicability(module.applicability.engine)}</small>
+                <small>
+                  {formatApplicability(module.applicability.aircraft)} / {formatApplicability(module.applicability.engine)} / {formatApplicability(module.applicability.variant)}
+                </small>
               </button>
             ))}
           </div>
@@ -467,6 +491,7 @@ export function App() {
                   <input placeholder="Title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
                   <input placeholder="Aircraft" value={uploadAircraft} onChange={(e) => setUploadAircraft(e.target.value)} />
                   <input placeholder="Engine" value={uploadEngine} onChange={(e) => setUploadEngine(e.target.value)} />
+                  <input placeholder="Variant" value={uploadVariant} onChange={(e) => setUploadVariant(e.target.value)} />
                   <input placeholder="ICN ID" value={uploadIcnId} onChange={(e) => setUploadIcnId(e.target.value)} />
                   <button type="submit">Upload</button>
                 </form>
@@ -497,7 +522,16 @@ export function App() {
           />
           {selectedContent ? (
             <div className="preview-meta">
-              Source: {selectedContent.source} | Applicability: {selectedContent.meta.applicabilityResult}
+              <span>Source: {selectedContent.source}</span>
+              <span
+                className={`applicability-badge ${selectedContent.meta.applicabilityResult.toLowerCase()}`}
+                title={selectedContent.meta.applicabilityReason}
+              >
+                {selectedContent.meta.applicabilityResult}
+              </span>
+              <span title={selectedContent.meta.applicabilityReason}>
+                {selectedContent.meta.applicabilityReason}
+              </span>
             </div>
           ) : null}
           <div className="preview dm-rendered" onClick={handlePreviewClick} dangerouslySetInnerHTML={{ __html: highlighted }} />

@@ -24,7 +24,7 @@ This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML
 - Two render modes:
   - `published` (preferred when preview exists)
   - `quick` (XSLT fallback from DM XML)
-- Phase 1 applicability filtering (DM-level)
+- Phase 1 applicability filtering (DM-level, aircraft/engine/variant with explainable status)
 - Phase 2/3 applicability extension points (skeleton interfaces)
 - Three-panel viewer with search highlight and hotspot navigation
 
@@ -46,4 +46,7 @@ Webapp: `http://localhost:5173`
 
 Wrapper scripts use bundled tooling in `.tools/` first (`.tools/jdk17`, `.tools/gradle`) when present.
 
-See `docs/how-to-run.md` for full Windows steps and `docs/applicability-phases.md` for Phase 1/2/3 plan.
+See `docs/how-to-run.md` for full Windows steps and:
+- `docs/applicability-phase1.md`
+- `docs/applicability-phase2.md`
+- `docs/applicability-phase3.md`
