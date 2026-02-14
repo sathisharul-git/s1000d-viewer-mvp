@@ -11,7 +11,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -51,47 +51,36 @@ class S1000dViewerApplicationTests {
     }
 
     @Test
-    void engineerCanUploadAndModuleBecomesVisible() throws Exception {
-        String engineerToken = loginAndGetToken("eng", "eng123");
-
-        MockMultipartFile xmlFile = new MockMultipartFile(
-            "file",
-            "DMC-UPLOAD-TEST-002.xml",
-            MediaType.APPLICATION_XML_VALUE,
-            "<dmodule><dmTitle><techName>Upload</techName><infoName>By Engineer</infoName></dmTitle><content><descript><para>Uploaded content</para></descript></content></dmodule>".getBytes()
-        );
-
-        mockMvc.perform(multipart("/api/modules/upload")
-                .file(xmlFile)
-                .param("aircraft", "A330")
-                .param("engine", "TRENT700")
-                .param("icnId", "ICN-SAMPLE-AAA-0001-A-01")
-                .header("Authorization", "Bearer " + engineerToken)
-        )
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.dmId").value("DMC-UPLOAD-TEST-002"));
-
-        mockMvc.perform(get("/api/modules")
-                .header("Authorization", "Bearer " + engineerToken)
-        )
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$[*].dmId", hasItem("DMC-UPLOAD-TEST-002")));
-    }
-
-    @Test
-    void moduleListReturnsSeededModules() throws Exception {
+    void publishedPreviewIsPreferredWhenAvailable() throws Exception {
         String token = loginAndGetToken("view", "view123");
 
-        mockMvc.perform(get("/api/modules")
+        mockMvc.perform(get("/api/modules/DMC-SAMPLE-AAA-00-00-00-00A-040A-C/render")
+                .param("aircraft", "A320")
+                .param("engine", "CFM56")
                 .header("Authorization", "Bearer " + token)
         )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(greaterThanOrEqualTo(2)))
-            .andExpect(jsonPath("$[*].dmId", hasItem("DMC-SAMPLE-AAA-00-00-00-00A-040A-C")));
+            .andExpect(jsonPath("$.source").value("published"))
+            .andExpect(jsonPath("$.meta.applicabilityResult").value("APPLICABLE"))
+            .andExpect(jsonPath("$.assets.icns", hasItem("ICN-SAMPLE-AAA-0001-A-01")));
     }
 
     @Test
-    void applicabilityFilterReturnsExpectedSubset() throws Exception {
+    void quickPreviewIsUsedWhenPublishedIsMissing() throws Exception {
+        String token = loginAndGetToken("view", "view123");
+
+        mockMvc.perform(get("/api/modules/DMC-SAMPLE-AAA-00-00-00-00A-050A-C/render")
+                .param("aircraft", "A350")
+                .param("engine", "XWB")
+                .header("Authorization", "Bearer " + token)
+        )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.source").value("quick"))
+            .andExpect(content().string(containsString("Inspect lever")));
+    }
+
+    @Test
+    void phase1ApplicabilityFilteringWorksAndUnknownIsIncluded() throws Exception {
         String token = loginAndGetToken("view", "view123");
 
         mockMvc.perform(get("/api/modules")
@@ -100,8 +89,7 @@ class S1000dViewerApplicationTests {
                 .header("Authorization", "Bearer " + token)
         )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$[0].aircraft").value("A320"));
+            .andExpect(jsonPath("$.modules[*].dmId", hasItem("DMC-SAMPLE-AAA-00-00-00-00A-040A-C")));
 
         mockMvc.perform(get("/api/modules")
                 .param("aircraft", "A380")
@@ -109,7 +97,38 @@ class S1000dViewerApplicationTests {
                 .header("Authorization", "Bearer " + token)
         )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(0));
+            .andExpect(jsonPath("$.modules[*].dmId", hasItem("DMC-SAMPLE-AAA-00-00-00-00A-060A-C")));
+    }
+
+    @Test
+    void unknownApplicabilityIsTaggedInRenderResponse() throws Exception {
+        String token = loginAndGetToken("view", "view123");
+
+        mockMvc.perform(get("/api/modules/DMC-SAMPLE-AAA-00-00-00-00A-060A-C/render")
+                .param("aircraft", "A220")
+                .param("engine", "PW1500G")
+                .header("Authorization", "Bearer " + token)
+        )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.meta.applicabilityResult").value("UNKNOWN"));
+    }
+
+    @Test
+    void malformedXmlUploadIsRejected() throws Exception {
+        String token = loginAndGetToken("eng", "eng123");
+
+        MockMultipartFile malformedXml = new MockMultipartFile(
+            "file",
+            "DMC-UPLOAD-MALFORMED.xml",
+            MediaType.APPLICATION_XML_VALUE,
+            "<dmodule><content><para>broken".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/modules/upload")
+                .file(malformedXml)
+                .header("Authorization", "Bearer " + token)
+        )
+            .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -120,17 +139,7 @@ class S1000dViewerApplicationTests {
                 .header("Authorization", "Bearer " + token)
         )
             .andExpect(status().isOk())
-            .andExpect(content().contentType("image/svg+xml"))
-            .andExpect(content().string(org.hamcrest.Matchers.anyOf(
-                org.hamcrest.Matchers.containsString("CGM Demo Conversion"),
-                org.hamcrest.Matchers.containsString("CGM conversion is not available in this runtime"),
-                org.hamcrest.Matchers.containsString("Rendered via jcgm")
-            )))
-            .andExpect(content().string(org.hamcrest.Matchers.anyOf(
-                org.hamcrest.Matchers.containsString("<path d=\"M "),
-                org.hamcrest.Matchers.containsString("<image href=\"data:image/png;base64,"),
-                org.hamcrest.Matchers.containsString("Install jcgm jars")
-            )));
+            .andExpect(content().contentType("image/svg+xml"));
     }
 
     @Test

@@ -1,31 +1,49 @@
 # S1000D Viewer (Gradle Multi-Module)
 
-This repository contains a runnable demo S1000D viewer with authentication, role-based access control, applicability filtering, text search highlight, and hotspot-aware graphics navigation.
+This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML render pipelines, applicability filtering phases, and graphics/hotspots.
 
 ## Repository layout
 - `application/` Spring Boot API
 - `webapp/` React + TypeScript SPA
-- `sample-data/` DM XML, graphics, metadata sidecars, hotspots
+- `data/` runtime sample data (CSDB, published previews, cache)
 - `docs/` architecture and run documentation
+
+## Data layout
+- `data/csdb/dm/` raw DM XML
+- `data/csdb/icn/` graphics assets
+- `data/csdb/meta/` DM metadata sidecars
+- `data/published/manifest.json` published preview index
+- `data/published/dm/<dmId>/index.html` published DM previews
+- `data/published/icn/<icnId>.svg` published graphics
+- `data/published/hotspots/<icnId>.json` published hotspots
+- `data/cache/` render cache (generated, git-ignored)
 
 ## Features
 - Login with seeded users (`admin`, `eng`, `view`)
-- RBAC:
-  - `ADMIN`: full access + user listing + upload
-  - `ENGINEER`: upload + view/search/filter
-  - `VIEWER`: view/search/filter only
-- S1000D module browsing and simple HTML rendering
-- Applicability filters (`aircraft`, `engine`)
-- Graphics endpoint serving SVG with dual CGM conversion path (optional `jcgm` jars in `application/libs/jcgm` for standards decode; built-in fallback converter otherwise)
-- Hotspot endpoint and hotspot-driven module navigation
-- Upload endpoint for DM XML with well-formed XML validation
-- Default sample source: `sample-data/csdb/S1000D_4-1_Bike_Samples`
+- RBAC with upload restricted to `ADMIN`/`ENGINEER`
+- Two render modes:
+  - `published` (preferred when preview exists)
+  - `quick` (XSLT fallback from DM XML)
+- Phase 1 applicability filtering (DM-level)
+- Phase 2/3 applicability extension points (skeleton interfaces)
+- Three-panel viewer with search highlight and hotspot navigation
 
 ## Quick start
 - Backend: `./gradlew :application:bootRun`
-- Frontend: `./gradlew :webapp:npmRunDev`
-- Test: `./gradlew test`
-- Wrapper scripts use bundled tooling in `.tools/` first (`.tools/jdk17`, `.tools/gradle`) when present.
+- Webapp:
+  - `cd webapp`
+  - `npm install`
+  - `npm run dev`
+- Tests: `./gradlew test`
 
-See `docs/how-to-run.md` for full Windows steps.
-API details are in `docs/api.md`.
+Backend: `http://localhost:8080`
+Webapp: `http://localhost:5173`
+
+## Demo credentials
+- Admin: `admin / admin123`
+- Engineer: `eng / eng123`
+- Viewer: `view / view123`
+
+Wrapper scripts use bundled tooling in `.tools/` first (`.tools/jdk17`, `.tools/gradle`) when present.
+
+See `docs/how-to-run.md` for full Windows steps and `docs/applicability-phases.md` for Phase 1/2/3 plan.

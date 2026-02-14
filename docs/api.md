@@ -9,9 +9,17 @@
 
 ## Modules
 - `GET /api/modules?aircraft=...&engine=...`
-- `GET /api/modules/{dmId}?aircraft=...&engine=...`
+  - Returns:
+    - `filters`
+    - `modules[]` (`dmId`, `title`, `applicability`, `source`, `hasPublishedPreview`)
+- `GET /api/modules/{dmId}/render?aircraft=...&engine=...`
+  - Returns:
+    - `dmId`, `source` (`published|quick`), `html`
+    - `meta` (`title`, `applicability`, `applicabilityResult`)
+    - `assets.icns[]`
+    - `links.dmRefs[]`
 - `POST /api/modules/upload` (ADMIN/ENGINEER)
-  - multipart form fields: `file`, `title`, `aircraft`, `engine`, `icnId`
+  - multipart fields: `file`, `title`, `aircraft`, `engine`, `icnId`
 
 ## Graphics
 - `GET /api/graphics/{icnId}` -> SVG (`image/svg+xml`)
@@ -24,6 +32,6 @@
 - `GET /api/health`
 
 ## Roles
-- `ROLE_ADMIN`: all APIs
+- `ROLE_ADMIN`: full access
 - `ROLE_ENGINEER`: all except `/api/admin/**`
-- `ROLE_VIEWER`: read-only module and graphic APIs
+- `ROLE_VIEWER`: read-only module/graphics

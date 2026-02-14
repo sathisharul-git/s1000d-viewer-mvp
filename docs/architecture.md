@@ -1,42 +1,45 @@
 # Architecture Overview
 
 ## Modules
-- `application`: Spring Boot API (auth, RBAC, module rendering, graphics/hotspots, upload)
-- `webapp`: React + TypeScript SPA (login + three-panel viewer)
-- `sample-data`: file-based CSDB demo content
+- `application` (Spring Boot backend)
+  - `domain/` stable core types (`Applicability`, `DataModuleDescriptor`)
+  - `render/` render orchestration (`RenderFacade`, `PublishedRenderService`, `QuickRenderService`, `RenderCache`)
+  - `applicability/` Phase 1 filter + Phase 2/3 extension interfaces
+  - `adapters/fs/` file-system repository for CSDB and published data
+- `webapp` (React + TypeScript frontend)
 
-## Backend flow
-1. `POST /api/auth/login` returns JWT.
-2. Frontend sends `Authorization: Bearer <token>` on all `/api/**` requests.
-3. Spring Security enforces RBAC:
-   - `ROLE_ADMIN`: all endpoints, including `/api/admin/users`
-   - `ROLE_ENGINEER`: upload + read endpoints
-   - `ROLE_VIEWER`: read-only endpoints
+## Rendering strategy
+1. `PublishedRenderService`
+   - Reads `data/published/dm/<dmId>/index.html`
+   - Source returned as `published`
+2. `QuickRenderService`
+   - Reads `data/csdb/dm/<dmId>.xml`
+   - Converts XML to HTML using `application/src/main/resources/xslt/s1000d-dm-to-html.xsl`
+   - Source returned as `quick`
 
-## Data layout
-Default runtime source: `sample-data/csdb/S1000D_4-1_Bike_Samples` (flat CSDB package).
+`RenderFacade` decides published first, quick fallback.
 
-Supported layouts:
-- Flat CSDB package (bike sample): `DMC-*.XML`, `ICN-*.(CGM|PNG|JPG|GIF)` in one folder
-- Structured layout (legacy demo): `dm/`, `icn/`, and `hotspots/` subfolders
+## Applicability (phased)
+- Phase 1 implemented now:
+  - Provider priority:
+    1. `data/published/manifest.json`
+    2. `data/csdb/meta/<dmId>.json`
+    3. unknown
+  - Unknown applicability is included in filtered module lists and tagged as `UNKNOWN`.
+- Phase 2 skeleton:
+  - `ApplicabilityEvaluator`
+  - `Phase2SectionApplicabilityEvaluator`
+- Phase 3 skeleton:
+  - `ApplicabilityRuleEngine`
+  - `BrexValidator`
 
-Metadata and hotspot behavior:
-- Applicability/title/ICN are parsed from DM XML when sidecar metadata is missing.
-- If `hotspots/<icnId>.json` exists, it is used directly.
-- Otherwise, hotspots are derived from `<graphic><hotspot .../></graphic>` in matching DM XML.
+## Data adapters
+`FsDataRepository` standardizes all file locations and prevents path-scattered logic in controllers/services.
 
-## Rendering and search
-- Backend converts DM XML into a simple HTML article for preview.
-- Frontend applies client-side text highlight (`<mark>`) to the rendered HTML.
+## Security
+- JWT auth with Spring Security
+- Upload endpoint restricted to ADMIN/ENGINEER
+- Admin endpoints restricted to ADMIN
 
-## CGM extension point
-- Interface: `CgmToSvgConverter`
-- Primary implementation: `JcgmBackedCgmToSvgConverter`
-- Fallback implementation: `DemoCgmToSvgConverter`
-- Conversion behavior:
-  - If `jcgm` jars are on classpath or in `application/libs/jcgm`, backend uses `jcgm` ImageIO SPI to decode CGM and wraps rendered image in SVG.
-  - If `jcgm` is unavailable or decode fails, backend falls back to deterministic SVG generation from CGM payload bytes.
-
-## Validation
-- Upload validation includes XML well-formed check.
-- XSD validation hook exists in `XmlValidationService#validateAgainstXsdHook`.
+## Caching
+- `DefaultRenderCache`: in-memory + best-effort disk cache at `data/cache/`.

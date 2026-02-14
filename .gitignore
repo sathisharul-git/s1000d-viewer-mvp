@@ -18,3 +18,4 @@ s1000d-viewer-mvp/.test-dist/
 .tools/
 *.log
 data/cache/
+application/src/test/resources/test-data/cache/

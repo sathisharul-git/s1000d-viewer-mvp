@@ -22,3 +22,7 @@ tasks.register('npmRunPreview', Exec) {
     dependsOn 'npmInstall'
     commandLine npmExecutable, 'run', 'preview'
 }
+
+tasks.named('build') {
+    dependsOn 'npmRunBuild'
+}
