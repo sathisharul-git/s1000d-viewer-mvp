@@ -1,10 +1,10 @@
 package com.s1000Dorg.viewer.auth;
 
+import com.s1000Dorg.viewer.config.SecurityProperties;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -13,10 +13,22 @@ public class DemoUserStore {
 
     private final Map<String, DemoUser> users = new LinkedHashMap<>();
 
-    public DemoUserStore(PasswordEncoder passwordEncoder) {
-        users.put("admin", new DemoUser("admin", passwordEncoder.encode("admin123"), Set.of("ROLE_ADMIN")));
-        users.put("eng", new DemoUser("eng", passwordEncoder.encode("eng123"), Set.of("ROLE_ENGINEER")));
-        users.put("view", new DemoUser("view", passwordEncoder.encode("view123"), Set.of("ROLE_VIEWER")));
+    public DemoUserStore(PasswordEncoder passwordEncoder, SecurityProperties securityProperties) {
+        for (SecurityProperties.DemoUserConfig configuredUser : securityProperties.getDemoUsers()) {
+            String username = configuredUser.getUsername();
+            String password = configuredUser.getPassword();
+            if (username == null || username.isBlank() || password == null || password.isBlank()) {
+                continue;
+            }
+            users.put(
+                username,
+                new DemoUser(
+                    username,
+                    passwordEncoder.encode(password),
+                    configuredUser.getRoles() == null ? java.util.Set.of() : java.util.Set.copyOf(configuredUser.getRoles())
+                )
+            );
+        }
     }
 
     public Optional<DemoUser> findByUsername(String username) {

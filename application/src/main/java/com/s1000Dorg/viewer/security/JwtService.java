@@ -1,6 +1,6 @@
 package com.s1000Dorg.viewer.security;
 
-import com.s1000Dorg.viewer.common.AppProperties;
+import com.s1000Dorg.viewer.config.SecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Service;
 
@@ -18,10 +19,12 @@ public class JwtService {
 
     private final SecretKey signingKey;
     private final long expirationSeconds;
+    private final String rolesClaim;
 
-    public JwtService(AppProperties appProperties) {
-        this.signingKey = Keys.hmacShaKeyFor(normalizeSecret(appProperties.getJwtSecret()));
-        this.expirationSeconds = appProperties.getJwtExpirationSeconds();
+    public JwtService(SecurityProperties securityProperties) {
+        this.signingKey = Keys.hmacShaKeyFor(normalizeSecret(securityProperties.getJwt().getSecret()));
+        this.expirationSeconds = securityProperties.getJwt().getExpirationSeconds();
+        this.rolesClaim = securityProperties.getClaimMapping().getRolesClaim();
     }
 
     public String generateToken(String username, Collection<String> roles) {
@@ -32,7 +35,7 @@ public class JwtService {
             .subject(username)
             .issuedAt(Date.from(now))
             .expiration(Date.from(expiry))
-            .claims(Map.of("roles", List.copyOf(roles)))
+            .claims(Map.of(rolesClaim, List.copyOf(roles)))
             .signWith(signingKey)
             .compact();
     }
@@ -43,7 +46,7 @@ public class JwtService {
 
     @SuppressWarnings("unchecked")
     public List<String> extractRoles(Claims claims) {
-        Object roles = claims.get("roles");
+        Object roles = claims.get(rolesClaim);
         if (roles instanceof List<?> list) {
             return list.stream().map(String::valueOf).toList();
         }
@@ -51,10 +54,11 @@ public class JwtService {
     }
 
     private byte[] normalizeSecret(String secret) {
-        byte[] raw = secret.getBytes(StandardCharsets.UTF_8);
-        if (raw.length == 0) {
-            return "fallback-jwt-secret-for-demo-only".getBytes(StandardCharsets.UTF_8);
+        String normalizedSecret = Objects.requireNonNullElse(secret, "").trim();
+        if (normalizedSecret.isBlank()) {
+            throw new IllegalStateException("viewer.security.jwt.secret must be configured");
         }
+        byte[] raw = normalizedSecret.getBytes(StandardCharsets.UTF_8);
         if (raw.length >= 32) {
             return raw;
         }

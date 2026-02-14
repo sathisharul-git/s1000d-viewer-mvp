@@ -1,5 +1,6 @@
 package com.s1000Dorg.viewer.applicability;
 
+import com.s1000Dorg.viewer.config.ApplicabilityProperties;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import java.util.List;
@@ -9,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ApplicabilityMatcherTest {
 
-    private final ApplicabilityMatcher matcher = new ApplicabilityMatcher();
+    private final ApplicabilityMatcher matcher = new ApplicabilityMatcher(new ApplicabilityProperties());
 
     @Test
     void returnsApplicableWhenAllRequestedDimensionsMatch() {

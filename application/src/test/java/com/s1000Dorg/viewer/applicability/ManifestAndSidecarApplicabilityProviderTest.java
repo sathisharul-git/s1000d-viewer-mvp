@@ -2,7 +2,7 @@ package com.s1000Dorg.viewer.applicability;
 
 import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
 import com.s1000Dorg.viewer.adapters.fs.PublishedManifestLoader;
-import com.s1000Dorg.viewer.common.AppProperties;
+import com.s1000Dorg.viewer.config.StorageProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -101,9 +101,12 @@ class MetadataApplicabilityProviderTest {
         Files.createDirectories(tempDir.resolve("published").resolve("hotspots"));
         Files.createDirectories(tempDir.resolve("cache"));
 
-        AppProperties properties = new AppProperties();
-        properties.setDataRoot(tempDir.toString());
-        return new FsDataRepository(properties, objectMapper, new PublishedManifestLoader(objectMapper));
+        StorageProperties storageProperties = new StorageProperties();
+        storageProperties.setCsdbRoot(tempDir.resolve("csdb").toString());
+        storageProperties.setPublishedRoot(tempDir.resolve("published").toString());
+        storageProperties.setCacheRoot(tempDir.resolve("cache").toString());
+        storageProperties.setAuditRoot(tempDir.resolve("audit").toString());
+        return new FsDataRepository(storageProperties, objectMapper, new PublishedManifestLoader(objectMapper));
     }
 
     private void writeManifest(String json) throws IOException {

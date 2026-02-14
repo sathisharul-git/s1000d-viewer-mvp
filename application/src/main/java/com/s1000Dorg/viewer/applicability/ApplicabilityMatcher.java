@@ -1,5 +1,6 @@
 package com.s1000Dorg.viewer.applicability;
 
+import com.s1000Dorg.viewer.config.ApplicabilityProperties;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import java.util.ArrayList;
@@ -9,10 +10,28 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApplicabilityMatcher {
 
+    private final ApplicabilityProperties applicabilityProperties;
+
+    public ApplicabilityMatcher(ApplicabilityProperties applicabilityProperties) {
+        this.applicabilityProperties = applicabilityProperties;
+    }
+
     public ApplicabilityDecision evaluate(Applicability applicability, ApplicabilityContext context) {
-        DimensionDecision aircraft = evaluateDimension("aircraft", context.aircraft(), applicability == null ? List.of() : applicability.aircraft());
-        DimensionDecision engine = evaluateDimension("engine", context.engine(), applicability == null ? List.of() : applicability.engine());
-        DimensionDecision variant = evaluateDimension("variant", context.variant(), applicability == null ? List.of() : applicability.variant());
+        DimensionDecision aircraft = evaluateDimension(
+            "aircraft",
+            context.aircraft(),
+            applicability == null ? List.of() : applicability.aircraft()
+        );
+        DimensionDecision engine = evaluateDimension(
+            "engine",
+            context.engine(),
+            applicability == null ? List.of() : applicability.engine()
+        );
+        DimensionDecision variant = evaluateDimension(
+            "variant",
+            context.variant(),
+            applicability == null ? List.of() : applicability.variant()
+        );
 
         List<String> reasons = new ArrayList<>();
         if (!aircraft.reason().isBlank()) {
@@ -62,6 +81,9 @@ public class ApplicabilityMatcher {
     }
 
     private DimensionDecision evaluateDimension(String key, String requested, List<String> values) {
+        if (!isDimensionEnabled(key)) {
+            return new DimensionDecision(ApplicabilityResult.APPLICABLE, "");
+        }
         if (requested == null) {
             return new DimensionDecision(ApplicabilityResult.APPLICABLE, "");
         }
@@ -81,6 +103,10 @@ public class ApplicabilityMatcher {
     }
 
     private record DimensionDecision(ApplicabilityResult result, String reason) {
+    }
+
+    private boolean isDimensionEnabled(String dimension) {
+        return applicabilityProperties.getAllowedDimensions().stream().anyMatch(value -> value.equalsIgnoreCase(dimension));
     }
 }
 

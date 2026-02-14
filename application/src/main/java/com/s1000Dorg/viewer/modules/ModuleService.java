@@ -4,11 +4,12 @@ import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
 import com.s1000Dorg.viewer.adapters.fs.PublishedManifestEntry;
 import com.s1000Dorg.viewer.applicability.ApplicabilityContext;
 import com.s1000Dorg.viewer.applicability.ApplicabilityDecision;
-import com.s1000Dorg.viewer.applicability.ApplicabilityFeatureFlags;
 import com.s1000Dorg.viewer.applicability.ApplicabilityInfo;
 import com.s1000Dorg.viewer.applicability.ApplicabilityRuleEngine;
 import com.s1000Dorg.viewer.applicability.ApplicabilityService;
 import com.s1000Dorg.viewer.applicability.eval.ApplicabilityEvaluator;
+import com.s1000Dorg.viewer.config.ApplicabilityProperties;
+import com.s1000Dorg.viewer.config.PolicyProperties;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
@@ -43,7 +44,8 @@ public class ModuleService {
 
     private final FsDataRepository repository;
     private final ApplicabilityService applicabilityService;
-    private final ApplicabilityFeatureFlags applicabilityFeatureFlags;
+    private final ApplicabilityProperties applicabilityProperties;
+    private final PolicyProperties policyProperties;
     private final ApplicabilityEvaluator applicabilityEvaluator;
     private final ApplicabilityRuleEngine applicabilityRuleEngine;
     private final RenderFacade renderFacade;
@@ -53,7 +55,8 @@ public class ModuleService {
     public ModuleService(
         FsDataRepository repository,
         ApplicabilityService applicabilityService,
-        ApplicabilityFeatureFlags applicabilityFeatureFlags,
+        ApplicabilityProperties applicabilityProperties,
+        PolicyProperties policyProperties,
         ApplicabilityEvaluator applicabilityEvaluator,
         ApplicabilityRuleEngine applicabilityRuleEngine,
         RenderFacade renderFacade,
@@ -62,7 +65,8 @@ public class ModuleService {
     ) {
         this.repository = repository;
         this.applicabilityService = applicabilityService;
-        this.applicabilityFeatureFlags = applicabilityFeatureFlags;
+        this.applicabilityProperties = applicabilityProperties;
+        this.policyProperties = policyProperties;
         this.applicabilityEvaluator = applicabilityEvaluator;
         this.applicabilityRuleEngine = applicabilityRuleEngine;
         this.renderFacade = renderFacade;
@@ -107,13 +111,13 @@ public class ModuleService {
 
         ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
         ApplicabilityResult applicabilityResult = decision.result();
-        if (applicabilityFeatureFlags.getPolicyEnforcement().isEnabled()) {
+        if (policyProperties.getEnforcement().isEnabled()) {
             ApplicabilityResult policyResult = applicabilityRuleEngine.evaluateRules(dmId, context);
             if (policyResult == ApplicabilityResult.NOT_APPLICABLE) {
                 applicabilityResult = ApplicabilityResult.NOT_APPLICABLE;
             }
         }
-        if (applicabilityFeatureFlags.getFragmentEvaluation().isEnabled()) {
+        if (applicabilityProperties.getFragmentEvaluation().isEnabled()) {
             // TODO: section-level applicability expression comes from parsed DM nodes.
             applicabilityEvaluator.isApplicable("fragment-evaluation-placeholder", context);
         }

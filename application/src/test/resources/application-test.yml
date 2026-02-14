@@ -26,16 +26,6 @@ viewer:
     claim-mapping:
       roles-claim: roles
       username-claim: sub
-    oidc:
-      enabled: false
-      issuer-uri: ""
-      client-id: ""
-    cors:
-      allowed-origins:
-        - http://localhost:5173
-      allowed-methods: [GET, POST, PUT, DELETE, OPTIONS]
-      allowed-headers: ["*"]
-      exposed-headers: [Authorization]
     demo-users:
       - username: admin
         password: admin123

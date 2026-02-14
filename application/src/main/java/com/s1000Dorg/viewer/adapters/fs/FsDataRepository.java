@@ -1,6 +1,6 @@
 package com.s1000Dorg.viewer.adapters.fs;
 
-import com.s1000Dorg.viewer.common.AppProperties;
+import com.s1000Dorg.viewer.config.StorageProperties;
 import com.s1000Dorg.viewer.graphics.Hotspot;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,7 +23,6 @@ public class FsDataRepository {
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
     private static final List<String> GRAPHIC_EXTENSIONS = List.of(".svg", ".png", ".jpg", ".jpeg", ".gif", ".cgm");
 
-    private final Path dataRoot;
     private final Path csdbDmDir;
     private final Path csdbMetaDir;
     private final Path csdbIcnDir;
@@ -33,21 +32,25 @@ public class FsDataRepository {
     private final Path publishedHotspotsDir;
     private final Path publishedManifestPath;
     private final Path cacheDir;
+    private final Path auditDir;
 
     private final ObjectMapper objectMapper;
     private final PublishedManifestLoader publishedManifestLoader;
 
-    public FsDataRepository(AppProperties appProperties, ObjectMapper objectMapper, PublishedManifestLoader publishedManifestLoader) {
-        this.dataRoot = Path.of(appProperties.getDataRoot()).toAbsolutePath().normalize();
-        this.csdbDmDir = dataRoot.resolve("csdb").resolve("dm").normalize();
-        this.csdbMetaDir = dataRoot.resolve("csdb").resolve("meta").normalize();
-        this.csdbIcnDir = dataRoot.resolve("csdb").resolve("icn").normalize();
-        this.csdbHotspotsDir = dataRoot.resolve("csdb").resolve("hotspots").normalize();
-        this.publishedDmDir = dataRoot.resolve("published").resolve("dm").normalize();
-        this.publishedIcnDir = dataRoot.resolve("published").resolve("icn").normalize();
-        this.publishedHotspotsDir = dataRoot.resolve("published").resolve("hotspots").normalize();
-        this.publishedManifestPath = dataRoot.resolve("published").resolve("manifest.json").normalize();
-        this.cacheDir = dataRoot.resolve("cache").normalize();
+    public FsDataRepository(StorageProperties storageProperties, ObjectMapper objectMapper, PublishedManifestLoader publishedManifestLoader) {
+        Path csdbRoot = Path.of(storageProperties.getCsdbRoot()).toAbsolutePath().normalize();
+        Path publishedRoot = Path.of(storageProperties.getPublishedRoot()).toAbsolutePath().normalize();
+        this.cacheDir = Path.of(storageProperties.getCacheRoot()).toAbsolutePath().normalize();
+        this.auditDir = Path.of(storageProperties.getAuditRoot()).toAbsolutePath().normalize();
+
+        this.csdbDmDir = csdbRoot.resolve("dm").normalize();
+        this.csdbMetaDir = csdbRoot.resolve("meta").normalize();
+        this.csdbIcnDir = csdbRoot.resolve("icn").normalize();
+        this.csdbHotspotsDir = csdbRoot.resolve("hotspots").normalize();
+        this.publishedDmDir = publishedRoot.resolve("dm").normalize();
+        this.publishedIcnDir = publishedRoot.resolve("icn").normalize();
+        this.publishedHotspotsDir = publishedRoot.resolve("hotspots").normalize();
+        this.publishedManifestPath = publishedRoot.resolve("manifest.json").normalize();
 
         this.objectMapper = objectMapper;
         this.publishedManifestLoader = publishedManifestLoader;
@@ -181,6 +184,7 @@ public class FsDataRepository {
         createDirectories(csdbDmDir);
         createDirectories(csdbMetaDir);
         createDirectories(cacheDir);
+        createDirectories(auditDir);
     }
 
     private List<Hotspot> readHotspotFile(Path path) {
