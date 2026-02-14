@@ -4,7 +4,9 @@
 - `application` (Spring Boot backend)
   - `domain/` stable core types (`Applicability`, `DataModuleDescriptor`)
   - `render/` render orchestration (`RenderFacade`, `PublishedRenderService`, `QuickRenderService`, `RenderCache`)
-  - `applicability/` Phase 1 filter + Phase 2/3 extension interfaces
+  - `applicability/` DM-level applicability service + provider + matcher
+  - `applicability/eval/` fragment-evaluation extension interfaces
+  - `policy/` policy/BREX enforcement extension interfaces
   - `adapters/fs/` file-system repository for CSDB and published data
 - `webapp` (React + TypeScript frontend)
 
@@ -17,7 +19,9 @@
    - Converts XML to HTML using `application/src/main/resources/xslt/s1000d-dm-to-html.xsl`
    - Source returned as `quick`
 
-`RenderFacade` decides published first, quick fallback.
+`RenderFacade` uses config-driven source selection:
+- `viewer.render.publishedPreferred`
+- `viewer.render.quickPreviewEnabled`
 
 ## Applicability (phased)
 - Phase 1 implemented now:
@@ -27,11 +31,13 @@
     3. unknown
   - Unknown applicability is included in filtered module lists and tagged as `UNKNOWN`.
 - Phase 2 skeleton:
-  - `ApplicabilityEvaluator`
-  - `Phase2SectionApplicabilityEvaluator`
+  - `applicability.eval.ApplicabilityExpressionParser`
+  - `applicability.eval.ApplicabilityEvaluator`
+  - Feature flag: `viewer.applicability.fragmentEvaluation.enabled`
 - Phase 3 skeleton:
-  - `ApplicabilityRuleEngine`
-  - `BrexValidator`
+  - `policy.PolicyDecisionPoint`
+  - `policy.BrexValidator`
+  - Feature flag: `viewer.policy.enforcement.enabled`
 
 ## Data adapters
 `FsDataRepository` standardizes all file locations and prevents path-scattered logic in controllers/services.
@@ -42,4 +48,5 @@
 - Admin endpoints restricted to ADMIN
 
 ## Caching
-- `DefaultRenderCache`: in-memory + best-effort disk cache at `data/cache/`.
+- `DefaultRenderCache`: in-memory + best-effort disk cache at configured `viewer.storage.cacheRoot`.
+- TTL is controlled by `viewer.render.cacheTtlSeconds`.

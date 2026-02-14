@@ -22,8 +22,8 @@ Scope: Section-level applicability inside a DM.
 - `ApplicabilityExpressionParser`
 - `ApplicabilityExpression` AST
 - `ApplicabilityEvaluator`
-- `Phase2SectionApplicabilityEvaluator`
-- Config flag: `applicability.phase2.enabled` (default `false`)
+- `DefaultApplicabilityEvaluator`
+- Config flag: `viewer.applicability.fragmentEvaluation.enabled` (default `false`)
 
 ### Intended approach
 - Parse applicability markup into expression trees
@@ -36,10 +36,11 @@ Scope: Full applicability engine with richer product model and BREX alignment.
 ### Extension points already added
 - `ApplicabilityRuleEngine`
 - `PolicyDecisionPoint`
+- `PolicyDecision`
 - `BrexValidator`
-- `Phase3ApplicabilityRuleEngine`
+- `PolicyDrivenApplicabilityRuleEngine`
 - `NoOpBrexValidator`
-- Config flag: `applicability.phase3.enabled` (default `false`)
+- Config flag: `viewer.policy.enforcement.enabled` (default `false`)
 
 ### Intended approach
 - Integrate product model catalogs and rule sets

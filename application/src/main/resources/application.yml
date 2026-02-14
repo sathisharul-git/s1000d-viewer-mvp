@@ -3,10 +3,10 @@ server:
 
 viewer:
   storage:
-    csdb-root: ./data/csdb
-    published-root: ./data/published
-    cache-root: ./data/cache
-    audit-root: ./data/audit
+    csdb-root: ../data/csdb
+    published-root: ../data/published
+    cache-root: ../data/cache
+    audit-root: ../data/audit
   render:
     published-preferred: true
     quick-preview-enabled: true

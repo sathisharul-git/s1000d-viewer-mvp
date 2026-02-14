@@ -10,8 +10,9 @@ Phase 3 is a skeleton only. It defines policy and BREX boundaries for defence-gr
 - `ApplicabilityRuleEngine`
 - `PolicyDecisionPoint` (PDP boundary)
 - `BrexValidator`
-- `Phase3ApplicabilityRuleEngine`
-- Feature flag: `applicability.phase3.enabled=false`
+- `PolicyDrivenApplicabilityRuleEngine`
+- `PolicyDecision` model (`ALLOW`/`DENY` + reason)
+- Feature flag: `viewer.policy.enforcement.enabled=false`
 
 ## Intended integration points
 1. DM-level decision before render/list exposure.

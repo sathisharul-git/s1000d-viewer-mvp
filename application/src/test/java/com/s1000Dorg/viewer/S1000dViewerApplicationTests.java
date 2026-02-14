@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -22,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class S1000dViewerApplicationTests {
 
     @Autowired
@@ -62,6 +64,7 @@ class S1000dViewerApplicationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.source").value("published"))
             .andExpect(jsonPath("$.meta.applicabilityResult").value("APPLICABLE"))
+            .andExpect(jsonPath("$.meta.applicabilityReason").isNotEmpty())
             .andExpect(jsonPath("$.assets.icns", hasItem("ICN-SAMPLE-AAA-0001-A-01")));
     }
 
@@ -80,7 +83,7 @@ class S1000dViewerApplicationTests {
     }
 
     @Test
-    void phase1ApplicabilityFilteringWorksAndUnknownIsIncluded() throws Exception {
+    void applicabilityFilteringWorksAndUnknownIsIncluded() throws Exception {
         String token = loginAndGetToken("view", "view123");
 
         mockMvc.perform(get("/api/modules")
@@ -110,7 +113,8 @@ class S1000dViewerApplicationTests {
                 .header("Authorization", "Bearer " + token)
         )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.meta.applicabilityResult").value("UNKNOWN"));
+            .andExpect(jsonPath("$.meta.applicabilityResult").value("UNKNOWN"))
+            .andExpect(jsonPath("$.meta.applicabilityReason").isNotEmpty());
     }
 
     @Test

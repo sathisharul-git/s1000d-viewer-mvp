@@ -39,10 +39,16 @@ This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML
 Backend: `http://localhost:8080`
 Webapp: `http://localhost:5173`
 
-## Demo credentials
-- Admin: `admin / admin123`
-- Engineer: `eng / eng123`
-- Viewer: `view / view123`
+## Runtime configuration
+- Java base package: `com.s1000Dorg.viewer`
+- App settings are externalized under `viewer.*` in `application/src/main/resources/application.yml`
+- Main groups: `viewer.storage`, `viewer.render`, `viewer.applicability`, `viewer.policy`, `viewer.security`
+- Environment variables can override secure values (JWT secret and demo passwords).
+
+## Demo credentials (default dev values)
+- Admin: `admin / ${VIEWER_DEMO_ADMIN_PASSWORD:-admin123}`
+- Engineer: `eng / ${VIEWER_DEMO_ENGINEER_PASSWORD:-eng123}`
+- Viewer: `view / ${VIEWER_DEMO_VIEWER_PASSWORD:-view123}`
 
 Wrapper scripts use bundled tooling in `.tools/` first (`.tools/jdk17`, `.tools/gradle`) when present.
 

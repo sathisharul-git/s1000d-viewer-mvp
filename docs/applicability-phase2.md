@@ -10,8 +10,8 @@ Phase 2 is a skeleton only in this repository. Runtime behavior is unchanged unl
 - `ApplicabilityExpressionParser`
 - `ApplicabilityExpression` (AST placeholder)
 - `ApplicabilityEvaluator`
-- `Phase2SectionApplicabilityEvaluator`
-- Feature flag: `applicability.phase2.enabled=false`
+- `DefaultApplicabilityEvaluator`
+- Feature flag: `viewer.applicability.fragmentEvaluation.enabled=false`
 
 ## Intended flow
 1. Parse S1000D applicability markup from DM XML.
