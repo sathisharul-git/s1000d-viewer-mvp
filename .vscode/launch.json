@@ -6,7 +6,7 @@
       "name": "Backend: Spring Boot",
       "request": "launch",
       "mainClass": "com.example.s1000dviewer.S1000dViewerApplication",
-      "projectName": "backend"
+      "projectName": "application"
     }
   ]
 }

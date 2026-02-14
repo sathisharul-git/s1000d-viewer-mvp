@@ -23,7 +23,7 @@ public class DemoCgmToSvgConverter implements CgmToSvgConverter {
               <rect width="1100" height="460" fill="#f8fafc"/>
               <rect x="22" y="22" width="1056" height="416" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
               <text x="52" y="88" fill="#0f172a" font-size="31" font-family="Segoe UI, sans-serif">CGM conversion is not available in this runtime</text>
-              <text x="52" y="132" fill="#334155" font-size="19" font-family="Segoe UI, sans-serif">Install jcgm jars in backend/libs/jcgm and restart backend to enable real CGM rendering.</text>
+              <text x="52" y="132" fill="#334155" font-size="19" font-family="Segoe UI, sans-serif">Install jcgm jars in application/libs/jcgm and restart backend to enable real CGM rendering.</text>
               <text x="52" y="174" fill="#334155" font-size="19" font-family="Segoe UI, sans-serif">ICN: %s</text>
               <text x="52" y="206" fill="#334155" font-size="19" font-family="Segoe UI, sans-serif">Source size: %d bytes</text>
               <line x1="52" y1="238" x2="1048" y2="238" stroke="#e2e8f0" stroke-width="1"/>

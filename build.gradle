@@ -12,7 +12,7 @@ allprojects {
 }
 
 tasks.register('cleanAll') {
-    dependsOn ':backend:clean', ':frontend:clean'
+    dependsOn ':application:clean', ':webapp:clean'
 }
 
 tasks.named('clean') {

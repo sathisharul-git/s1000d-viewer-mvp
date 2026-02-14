@@ -126,9 +126,9 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
 
     private List<Path> candidateJarDirs() {
         List<Path> candidates = new ArrayList<>();
-        candidates.add(Path.of("backend", "libs", "jcgm"));
+        candidates.add(Path.of("application", "libs", "jcgm"));
         candidates.add(Path.of("libs", "jcgm"));
-        candidates.add(Path.of("..", "backend", "libs", "jcgm"));
+        candidates.add(Path.of("..", "application", "libs", "jcgm"));
         return candidates;
     }
 

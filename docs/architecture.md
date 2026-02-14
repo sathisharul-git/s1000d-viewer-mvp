@@ -1,8 +1,8 @@
 # Architecture Overview
 
 ## Modules
-- `backend`: Spring Boot API (auth, RBAC, module rendering, graphics/hotspots, upload)
-- `frontend`: React + TypeScript SPA (login + three-panel viewer)
+- `application`: Spring Boot API (auth, RBAC, module rendering, graphics/hotspots, upload)
+- `webapp`: React + TypeScript SPA (login + three-panel viewer)
 - `sample-data`: file-based CSDB demo content
 
 ## Backend flow
@@ -34,7 +34,7 @@ Metadata and hotspot behavior:
 - Primary implementation: `JcgmBackedCgmToSvgConverter`
 - Fallback implementation: `DemoCgmToSvgConverter`
 - Conversion behavior:
-  - If `jcgm` jars are on classpath or in `backend/libs/jcgm`, backend uses `jcgm` ImageIO SPI to decode CGM and wraps rendered image in SVG.
+  - If `jcgm` jars are on classpath or in `application/libs/jcgm`, backend uses `jcgm` ImageIO SPI to decode CGM and wraps rendered image in SVG.
   - If `jcgm` is unavailable or decode fails, backend falls back to deterministic SVG generation from CGM payload bytes.
 
 ## Validation

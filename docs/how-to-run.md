@@ -9,7 +9,7 @@
 From repository root:
 
 ```powershell
-./gradlew :backend:bootRun
+./gradlew :application:bootRun
 ```
 
 Backend URL: `http://localhost:8080`
@@ -19,7 +19,7 @@ Default data root: `sample-data/csdb/S1000D_4-1_Bike_Samples`
 In a second terminal:
 
 ```powershell
-./gradlew :frontend:npmRunDev
+./gradlew :webapp:npmRunDev
 ```
 
 Frontend URL: `http://localhost:5173`
@@ -41,9 +41,9 @@ From repository root:
 ## Optional: enable standards-based CGM decoding (`jcgm`)
 The backend can use `jcgm` if jars are available at runtime.
 
-1. Create directory: `backend/libs/jcgm`
+1. Create directory: `application/libs/jcgm`
 2. Copy `jcgm` jars (for example `jcgm-core*.jar`, `jcgm-image*.jar`) into that folder.
-3. Restart backend (`./gradlew :backend:bootRun`).
+3. Restart backend (`./gradlew :application:bootRun`).
 
 If jars are missing, backend automatically falls back to the built-in demo converter.
 
