@@ -8,6 +8,12 @@ s1000d:
   phase2-section-applicability-enabled: false
   phase3-rule-engine-enabled: false
 
+applicability:
+  phase2:
+    enabled: false
+  phase3:
+    enabled: false
+
 spring:
   servlet:
     multipart:

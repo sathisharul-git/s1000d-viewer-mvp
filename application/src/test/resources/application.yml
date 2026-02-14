@@ -2,3 +2,9 @@ s1000d:
   data-root: src/test/resources/test-data
   jwt-secret: test-secret-test-secret-test-secret-test-secret
   jwt-expiration-seconds: 3600
+
+applicability:
+  phase2:
+    enabled: false
+  phase3:
+    enabled: false

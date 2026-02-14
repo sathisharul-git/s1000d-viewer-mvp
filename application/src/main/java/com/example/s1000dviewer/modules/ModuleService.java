@@ -5,6 +5,7 @@ import com.example.s1000dviewer.adapters.fs.PublishedManifestEntry;
 import com.example.s1000dviewer.applicability.ApplicabilityContext;
 import com.example.s1000dviewer.applicability.ApplicabilityMatchDecision;
 import com.example.s1000dviewer.applicability.ApplicabilityMatcher;
+import com.example.s1000dviewer.applicability.ApplicabilityFeatureFlags;
 import com.example.s1000dviewer.applicability.ApplicabilityRuleEngine;
 import com.example.s1000dviewer.applicability.ApplicabilityEvaluator;
 import com.example.s1000dviewer.applicability.ApplicabilityProvider;
@@ -45,6 +46,7 @@ public class ModuleService {
     private final FsDataRepository repository;
     private final ApplicabilityProvider applicabilityProvider;
     private final ApplicabilityMatcher applicabilityMatcher;
+    private final ApplicabilityFeatureFlags applicabilityFeatureFlags;
     private final ApplicabilityEvaluator applicabilityEvaluator;
     private final ApplicabilityRuleEngine applicabilityRuleEngine;
     private final RenderFacade renderFacade;
@@ -56,6 +58,7 @@ public class ModuleService {
         FsDataRepository repository,
         ApplicabilityProvider applicabilityProvider,
         ApplicabilityMatcher applicabilityMatcher,
+        ApplicabilityFeatureFlags applicabilityFeatureFlags,
         ApplicabilityEvaluator applicabilityEvaluator,
         ApplicabilityRuleEngine applicabilityRuleEngine,
         RenderFacade renderFacade,
@@ -66,6 +69,7 @@ public class ModuleService {
         this.repository = repository;
         this.applicabilityProvider = applicabilityProvider;
         this.applicabilityMatcher = applicabilityMatcher;
+        this.applicabilityFeatureFlags = applicabilityFeatureFlags;
         this.applicabilityEvaluator = applicabilityEvaluator;
         this.applicabilityRuleEngine = applicabilityRuleEngine;
         this.renderFacade = renderFacade;
@@ -117,7 +121,7 @@ public class ModuleService {
                 applicabilityResult = ApplicabilityResult.NOT_APPLICABLE;
             }
         }
-        if (appProperties.isPhase2SectionApplicabilityEnabled()) {
+        if (applicabilityFeatureFlags.getPhase2().isEnabled()) {
             // TODO Phase 2: section-level applicability expression comes from parsed DM nodes.
             applicabilityEvaluator.isApplicable("phase2-placeholder", context);
         }
