@@ -2,9 +2,11 @@ server:
   port: 8080
 
 s1000d:
-  data-root: ../sample-data/csdb/S1000D_4-1_Bike_Samples
+  data-root: ../data
   jwt-secret: change-me-in-real-env-change-me-in-real-env-change-me
   jwt-expiration-seconds: 28800
+  phase2-section-applicability-enabled: false
+  phase3-rule-engine-enabled: false
 
 spring:
   servlet:

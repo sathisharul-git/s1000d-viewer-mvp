@@ -1,0 +1,20 @@
+[
+  {
+    "id": "hs-1",
+    "x": 12,
+    "y": 22,
+    "w": 18,
+    "h": 14,
+    "label": "Open Inspection DM",
+    "targetDmId": "DMC-SAMPLE-AAA-00-00-00-00A-040A-C"
+  },
+  {
+    "id": "hs-2",
+    "x": 45,
+    "y": 50,
+    "w": 16,
+    "h": 12,
+    "label": "Reference Fuel DM",
+    "targetDmId": "DMC-SAMPLE-AAA-00-00-00-00A-050A-C"
+  }
+]

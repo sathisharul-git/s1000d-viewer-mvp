@@ -1,0 +1,8 @@
+{
+  "title": "Inspect lever - Check",
+  "icnId": "ICN-SAMPLE-AAA-0001-A-01",
+  "applicability": {
+    "aircraft": ["A350"],
+    "engine": ["XWB"]
+  }
+}

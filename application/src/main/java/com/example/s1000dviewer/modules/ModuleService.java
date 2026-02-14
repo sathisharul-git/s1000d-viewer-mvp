@@ -1,6 +1,18 @@
 package com.example.s1000dviewer.modules;
 
+import com.example.s1000dviewer.adapters.fs.FsDataRepository;
+import com.example.s1000dviewer.adapters.fs.PublishedManifestEntry;
+import com.example.s1000dviewer.applicability.ApplicabilityContext;
+import com.example.s1000dviewer.applicability.ApplicabilityFilter;
+import com.example.s1000dviewer.applicability.ApplicabilityRuleEngine;
+import com.example.s1000dviewer.applicability.ApplicabilityEvaluator;
+import com.example.s1000dviewer.applicability.ApplicabilityProvider;
 import com.example.s1000dviewer.common.AppProperties;
+import com.example.s1000dviewer.domain.Applicability;
+import com.example.s1000dviewer.domain.ApplicabilityResult;
+import com.example.s1000dviewer.domain.DataModuleDescriptor;
+import com.example.s1000dviewer.render.RenderFacade;
+import com.example.s1000dviewer.render.RenderedDm;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -8,6 +20,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,63 +33,102 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import org.w3c.dom.Document;
-import org.xml.sax.ErrorHandler;
 import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 @Service
 public class ModuleService {
 
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
 
-    private final Path dataRoot;
-    private final Path uploadDmDir;
-    private final ObjectMapper objectMapper;
-    private final DmHtmlRenderer dmHtmlRenderer;
+    private final FsDataRepository repository;
+    private final ApplicabilityProvider applicabilityProvider;
+    private final ApplicabilityFilter applicabilityFilter;
+    private final ApplicabilityEvaluator applicabilityEvaluator;
+    private final ApplicabilityRuleEngine applicabilityRuleEngine;
+    private final RenderFacade renderFacade;
     private final XmlValidationService xmlValidationService;
+    private final ObjectMapper objectMapper;
+    private final AppProperties appProperties;
 
     public ModuleService(
-        AppProperties appProperties,
+        FsDataRepository repository,
+        ApplicabilityProvider applicabilityProvider,
+        ApplicabilityFilter applicabilityFilter,
+        ApplicabilityEvaluator applicabilityEvaluator,
+        ApplicabilityRuleEngine applicabilityRuleEngine,
+        RenderFacade renderFacade,
+        XmlValidationService xmlValidationService,
         ObjectMapper objectMapper,
-        DmHtmlRenderer dmHtmlRenderer,
-        XmlValidationService xmlValidationService
+        AppProperties appProperties
     ) {
-        this.dataRoot = Path.of(appProperties.getDataRoot()).toAbsolutePath().normalize();
-        this.uploadDmDir = this.dataRoot.resolve("dm").normalize();
-        this.objectMapper = objectMapper;
-        this.dmHtmlRenderer = dmHtmlRenderer;
+        this.repository = repository;
+        this.applicabilityProvider = applicabilityProvider;
+        this.applicabilityFilter = applicabilityFilter;
+        this.applicabilityEvaluator = applicabilityEvaluator;
+        this.applicabilityRuleEngine = applicabilityRuleEngine;
+        this.renderFacade = renderFacade;
         this.xmlValidationService = xmlValidationService;
+        this.objectMapper = objectMapper;
+        this.appProperties = appProperties;
     }
 
-    public List<ModuleSummaryResponse> listModules(String aircraft, String engine) {
-        String aircraftFilter = normalizeFilter(aircraft);
-        String engineFilter = normalizeFilter(engine);
+    public ModuleListResponse listModules(String aircraft, String engine) {
+        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine);
 
-        return discoverDmFiles().stream()
-            .sorted(Comparator.comparing(path -> path.getFileName().toString()))
-            .map(this::toSummary)
-            .filter(summary -> matchesApplicability(summary, aircraftFilter, engineFilter))
-            .toList();
+        List<ModuleListItemResponse> modules = new ArrayList<>();
+        for (DataModuleDescriptor descriptor : resolveDescriptors()) {
+            ApplicabilityResult result = applicabilityFilter.evaluate(descriptor.applicability(), context);
+            if (!applicabilityFilter.includeInList(result)) {
+                continue;
+            }
+            modules.add(new ModuleListItemResponse(
+                descriptor.dmId(),
+                descriptor.title(),
+                toApplicabilityResponse(descriptor.applicability()),
+                descriptor.source(),
+                descriptor.hasPublishedPreview()
+            ));
+        }
+
+        modules.sort(Comparator.comparing(ModuleListItemResponse::dmId));
+        return new ModuleListResponse(new ModuleFiltersResponse(context.aircraft(), context.engine()), modules);
     }
 
-    public ModuleContentResponse getModuleContent(String dmId, String aircraft, String engine) {
+    public ModuleRenderResponse renderModule(String dmId, String aircraft, String engine) {
         validateDmId(dmId);
-        Path xmlPath = findDmPath(dmId)
+        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine);
+
+        DataModuleDescriptor descriptor = resolveDescriptor(dmId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not found"));
-
-        ModuleSummaryResponse metadata = toSummary(xmlPath);
-        if (!matchesApplicability(metadata, normalizeFilter(aircraft), normalizeFilter(engine))) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not applicable for selected filters");
+        if (!descriptor.hasPublishedPreview() && repository.findDmXml(dmId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module content not found");
         }
 
-        try {
-            String xml = Files.readString(xmlPath, StandardCharsets.UTF_8);
-            String html = dmHtmlRenderer.render(dmId, xml);
-            return new ModuleContentResponse(metadata, html);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read module", ex);
+        ApplicabilityResult applicabilityResult = applicabilityFilter.evaluate(descriptor.applicability(), context);
+        if (appProperties.isPhase3RuleEngineEnabled()) {
+            ApplicabilityResult phase3 = applicabilityRuleEngine.evaluateRules(dmId, context);
+            if (phase3 == ApplicabilityResult.NOT_APPLICABLE) {
+                applicabilityResult = ApplicabilityResult.NOT_APPLICABLE;
+            }
         }
+        if (appProperties.isPhase2SectionApplicabilityEnabled()) {
+            // TODO Phase 2: section-level applicability expression comes from parsed DM nodes.
+            applicabilityEvaluator.isApplicable("phase2-placeholder", context);
+        }
+        RenderedDm rendered = renderFacade.render(descriptor, applicabilityResult);
+
+        return new ModuleRenderResponse(
+            rendered.dmId(),
+            rendered.source(),
+            rendered.html(),
+            new ModuleRenderMetaResponse(
+                rendered.title(),
+                toApplicabilityResponse(rendered.applicability()),
+                rendered.applicabilityResult()
+            ),
+            new ModuleAssetsResponse(rendered.icns()),
+            new ModuleLinksResponse(rendered.dmRefs())
+        );
     }
 
     public ModuleUploadResponse uploadModule(
@@ -99,23 +151,29 @@ public class ModuleService {
         validateDmId(dmId);
 
         try {
-            ensureDir(uploadDmDir);
+            repository.ensureWritableDataDirs();
             byte[] xmlBytes = file.getBytes();
             xmlValidationService.validateWellFormed(new ByteArrayInputStream(xmlBytes));
             xmlValidationService.validateAgainstXsdHook(new ByteArrayInputStream(xmlBytes));
 
-            Path targetXml = uploadDmDir.resolve(dmId + ".xml").normalize();
-            if (!targetXml.startsWith(uploadDmDir)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dmId");
-            }
-            Files.write(targetXml, xmlBytes);
+            Path xmlPath = repository.csdbDmDir().resolve(dmId + ".xml").normalize();
+            Files.write(xmlPath, xmlBytes);
 
-            ModuleMetadataSidecar sidecar = new ModuleMetadataSidecar();
-            sidecar.setAircraft(blankToNull(aircraft));
-            sidecar.setEngine(blankToNull(engine));
-            sidecar.setTitle(blankToNull(title));
-            sidecar.setIcnId(blankToNull(icnId));
-            writeSidecar(targetXml, sidecar);
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("title", blankToNull(title));
+            meta.put("icnId", blankToNull(icnId));
+
+            Map<String, Object> applicability = new LinkedHashMap<>();
+            applicability.put("aircraft", toSingleList(aircraft));
+            applicability.put("engine", toSingleList(engine));
+            meta.put("applicability", applicability);
+
+            // Keep legacy fields for compatibility.
+            meta.put("aircraft", blankToNull(aircraft));
+            meta.put("engine", blankToNull(engine));
+
+            Path metaPath = repository.csdbMetaDir().resolve(dmId + ".json").normalize();
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(metaPath.toFile(), meta);
 
             return new ModuleUploadResponse(dmId, "Module uploaded successfully");
         } catch (IllegalArgumentException badXml) {
@@ -125,136 +183,116 @@ public class ModuleService {
         }
     }
 
-    private ModuleSummaryResponse toSummary(Path xmlPath) {
-        String fileName = xmlPath.getFileName().toString();
-        String dmId = dmIdFromPath(xmlPath);
-        ModuleMetadataSidecar sidecar = readSidecar(xmlPath);
-        ExtractedMetadata extracted = readMetadataFromXml(xmlPath);
+    private List<DataModuleDescriptor> resolveDescriptors() {
+        Map<String, PublishedManifestEntry> manifest = repository.readPublishedManifest();
 
-        String title = firstNonBlank(sidecar.getTitle(), extracted.title(), dmId);
-        String aircraft = firstNonBlank(sidecar.getAircraft(), extracted.aircraft(), "ALL");
-        String engine = firstNonBlank(sidecar.getEngine(), extracted.engine(), "ALL");
-        String icnId = firstNonBlank(sidecar.getIcnId(), extracted.icnId(), "");
-
-        return new ModuleSummaryResponse(dmId, title, aircraft, engine, icnId, fileName);
-    }
-
-    private boolean matchesApplicability(ModuleSummaryResponse summary, String aircraft, String engine) {
-        boolean aircraftOk = aircraft == null || "ALL".equalsIgnoreCase(summary.aircraft()) || summary.aircraft().equalsIgnoreCase(aircraft);
-        boolean engineOk = engine == null || "ALL".equalsIgnoreCase(summary.engine()) || summary.engine().equalsIgnoreCase(engine);
-        return aircraftOk && engineOk;
-    }
-
-    private ModuleMetadataSidecar readSidecar(Path xmlPath) {
-        String dmId = dmIdFromPath(xmlPath);
-        Path sidecarPath = xmlPath.resolveSibling(dmId + ".meta.json").normalize();
-        if (!Files.exists(sidecarPath) || !Files.isRegularFile(sidecarPath)) {
-            return new ModuleMetadataSidecar();
+        Map<String, DataModuleDescriptor> descriptors = new LinkedHashMap<>();
+        for (Path path : repository.listDmXmlFiles()) {
+            String dmId = dmIdFromPath(path);
+            descriptors.put(dmId.toUpperCase(Locale.ROOT), buildDescriptor(dmId, manifest));
         }
-        try {
-            return objectMapper.readValue(sidecarPath.toFile(), ModuleMetadataSidecar.class);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read metadata for " + dmId, ex);
-        }
-    }
 
-    private void writeSidecar(Path xmlPath, ModuleMetadataSidecar sidecar) {
-        String dmId = dmIdFromPath(xmlPath);
-        Path sidecarPath = xmlPath.resolveSibling(dmId + ".meta.json").normalize();
-        if (!sidecarPath.startsWith(uploadDmDir)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dmId");
-        }
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(sidecarPath.toFile(), sidecar);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to write metadata", ex);
-        }
-    }
-
-    private ExtractedMetadata readMetadataFromXml(Path xmlPath) {
-        try {
-            String xml = Files.readString(xmlPath, StandardCharsets.UTF_8);
-            DocumentBuilderFactory factory = xmlFactory();
-            var builder = factory.newDocumentBuilder();
-            builder.setErrorHandler(silentErrorHandler());
-            Document doc = builder.parse(new InputSource(new StringReader(xml)));
-            doc.getDocumentElement().normalize();
-
-            String techName = firstTag(doc, "techName");
-            String infoName = firstTag(doc, "infoName");
-            String title = "";
-            if (!techName.isBlank() && !infoName.isBlank()) {
-                title = techName + " - " + infoName;
-            } else if (!techName.isBlank()) {
-                title = techName;
-            } else if (!infoName.isBlank()) {
-                title = infoName;
+        for (PublishedManifestEntry entry : manifest.values()) {
+            String dmId = entry.dmId();
+            if (dmId == null || dmId.isBlank()) {
+                continue;
             }
+            descriptors.putIfAbsent(dmId.toUpperCase(Locale.ROOT), buildDescriptor(dmId, manifest));
+        }
 
-            String aircraft = "";
-            var dmCodeNodes = doc.getElementsByTagName("dmCode");
-            if (dmCodeNodes.getLength() > 0) {
-                var dmCode = (org.w3c.dom.Element) dmCodeNodes.item(0);
-                aircraft = safeTrim(dmCode.getAttribute("modelIdentCode"));
-            }
+        return descriptors.values().stream().toList();
+    }
 
-            String engine = "";
-            var asserts = doc.getElementsByTagName("assert");
-            for (int i = 0; i < asserts.getLength(); i++) {
-                var assertNode = (org.w3c.dom.Element) asserts.item(i);
-                String ident = safeTrim(assertNode.getAttribute("applicPropertyIdent")).toLowerCase(Locale.ROOT);
-                String value = safeTrim(assertNode.getAttribute("applicPropertyValues"));
-                if (value.isBlank()) {
-                    continue;
-                }
-                if (engine.isBlank() && ("model".equals(ident) || "engine".equals(ident))) {
-                    engine = value;
-                }
-                if (aircraft.isBlank() && ("type".equals(ident) || "aircraft".equals(ident))) {
-                    aircraft = value;
-                }
-            }
+    private Optional<DataModuleDescriptor> resolveDescriptor(String dmId) {
+        return resolveDescriptors().stream().filter(item -> item.dmId().equalsIgnoreCase(dmId)).findFirst();
+    }
 
-            String icnId = "";
-            var graphics = doc.getElementsByTagName("graphic");
-            for (int i = 0; i < graphics.getLength(); i++) {
-                var graphic = (org.w3c.dom.Element) graphics.item(i);
-                icnId = safeTrim(graphic.getAttribute("infoEntityIdent"));
-                if (!icnId.isBlank()) {
+    private DataModuleDescriptor buildDescriptor(String dmId, Map<String, PublishedManifestEntry> manifest) {
+        PublishedManifestEntry entry = manifest.get(dmId.toUpperCase(Locale.ROOT));
+        String manifestTitle = entry == null ? "" : nullToEmpty(entry.title());
+
+        String title = firstNonBlank(
+            manifestTitle,
+            readMetaText(dmId, "title"),
+            extractTitleFromXml(dmId),
+            dmId
+        );
+
+        String primaryIcn = firstNonBlank(
+            readMetaText(dmId, "icnId"),
+            entry != null && entry.icns() != null && !entry.icns().isEmpty() ? entry.icns().get(0) : "",
+            extractFirstIcnFromXml(dmId)
+        );
+
+        Applicability applicability = applicabilityProvider.resolve(dmId);
+        boolean hasPublished = repository.hasPublishedHtml(dmId);
+        String source = hasPublished ? "published" : "csdb";
+
+        return new DataModuleDescriptor(dmId, title, applicability, source, hasPublished, primaryIcn);
+    }
+
+    private ApplicabilityResponse toApplicabilityResponse(Applicability applicability) {
+        return new ApplicabilityResponse(applicability.aircraft(), applicability.engine());
+    }
+
+    private String readMetaText(String dmId, String field) {
+        return repository.readMetaNode(dmId)
+            .map(node -> node.path(field))
+            .filter(com.fasterxml.jackson.databind.JsonNode::isTextual)
+            .map(node -> node.asText("").trim())
+            .orElse("");
+    }
+
+    private String extractTitleFromXml(String dmId) {
+        return repository.readDmXml(dmId)
+            .map(xml -> {
+                try {
+                    var factory = DocumentBuilderFactory.newInstance();
+                    factory.setNamespaceAware(false);
+                    factory.setExpandEntityReferences(false);
+                    var builder = factory.newDocumentBuilder();
+                    var doc = builder.parse(new InputSource(new StringReader(xml)));
+                    String techName = firstTag(doc, "techName");
+                    String infoName = firstTag(doc, "infoName");
+                    if (!techName.isBlank() && !infoName.isBlank()) {
+                        return techName + " - " + infoName;
+                    }
+                    return firstNonBlank(techName, infoName);
+                } catch (Exception ignored) {
+                    return "";
+                }
+            })
+            .orElse("");
+    }
+
+    private String extractFirstIcnFromXml(String dmId) {
+        return repository.readDmXml(dmId)
+            .map(xml -> {
+                String upper = xml.toUpperCase(Locale.ROOT);
+                int idx = upper.indexOf("ICN-");
+                if (idx < 0) {
+                    return "";
+                }
+                int end = idx;
+                while (end < upper.length()) {
+                    char ch = upper.charAt(end);
+                    if (Character.isLetterOrDigit(ch) || ch == '-' || ch == '_') {
+                        end++;
+                        continue;
+                    }
                     break;
                 }
-                String href = safeTrim(firstNonBlank(graphic.getAttribute("xlink:href"), graphic.getAttribute("href")));
-                icnId = extractIcnIdFromHref(href);
-                if (!icnId.isBlank()) {
-                    break;
-                }
-            }
-
-            return new ExtractedMetadata(title, aircraft, engine, icnId);
-        } catch (Exception ex) {
-            return new ExtractedMetadata("", "", "", "");
-        }
+                return upper.substring(idx, end);
+            })
+            .orElse("");
     }
 
-    private String extractIcnIdFromHref(String href) {
-        if (href == null || href.isBlank()) {
+    private String firstTag(org.w3c.dom.Document doc, String tagName) {
+        var nodes = doc.getElementsByTagName(tagName);
+        if (nodes.getLength() == 0 || nodes.item(0) == null) {
             return "";
         }
-        String raw = href.trim();
-        String upper = raw.toUpperCase(Locale.ROOT);
-        int idx = upper.indexOf("ICN-");
-        if (idx >= 0) {
-            return raw.substring(idx);
-        }
-        return "";
-    }
-
-    private String firstTag(Document doc, String name) {
-        var list = doc.getElementsByTagName(name);
-        if (list.getLength() == 0 || list.item(0) == null) {
-            return "";
-        }
-        String text = list.item(0).getTextContent();
+        String text = nodes.item(0).getTextContent();
         return text == null ? "" : text.trim();
     }
 
@@ -264,30 +302,13 @@ public class ModuleService {
         }
     }
 
-    private String dmIdFromPath(Path xmlPath) {
-        return stripExtension(xmlPath.getFileName().toString());
+    private String dmIdFromPath(Path path) {
+        return stripExtension(path.getFileName().toString());
     }
 
     private String stripExtension(String fileName) {
         int idx = fileName.lastIndexOf('.');
-        if (idx <= 0) {
-            return fileName;
-        }
-        return fileName.substring(0, idx);
-    }
-
-    private String normalizeFilter(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
-    }
-
-    private String blankToNull(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
+        return idx > 0 ? fileName.substring(0, idx) : fileName;
     }
 
     private String firstNonBlank(String... values) {
@@ -299,94 +320,22 @@ public class ModuleService {
         return "";
     }
 
-    private List<Path> discoverDmFiles() {
-        try {
-            Map<String, Path> byDmId = new LinkedHashMap<>();
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
 
-            if (Files.isDirectory(uploadDmDir)) {
-                try (var uploadStream = Files.list(uploadDmDir)) {
-                    uploadStream
-                        .filter(Files::isRegularFile)
-                        .filter(this::isDmFile)
-                        .forEach(path -> byDmId.putIfAbsent(dmIdFromPath(path).toUpperCase(Locale.ROOT), path));
-                }
-            }
-
-            if (Files.isDirectory(dataRoot)) {
-                try (var rootStream = Files.walk(dataRoot, 2)) {
-                    rootStream
-                        .filter(Files::isRegularFile)
-                        .filter(this::isDmFile)
-                        .forEach(path -> byDmId.putIfAbsent(dmIdFromPath(path).toUpperCase(Locale.ROOT), path));
-                }
-            }
-
-            return byDmId.values().stream().toList();
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to list data modules", ex);
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
         }
+        return value.trim();
     }
 
-    private Optional<Path> findDmPath(String dmId) {
-        return discoverDmFiles().stream()
-            .filter(path -> dmIdFromPath(path).equalsIgnoreCase(dmId))
-            .findFirst();
-    }
-
-    private boolean isDmFile(Path path) {
-        String fileName = path.getFileName().toString().toUpperCase(Locale.ROOT);
-        return fileName.endsWith(".XML") && fileName.startsWith("DMC-");
-    }
-
-    private DocumentBuilderFactory xmlFactory() {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", false);
-        setFeatureIfSupported(factory, "http://xml.org/sax/features/external-general-entities", false);
-        setFeatureIfSupported(factory, "http://xml.org/sax/features/external-parameter-entities", false);
-        setFeatureIfSupported(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        factory.setExpandEntityReferences(false);
-        factory.setNamespaceAware(false);
-        return factory;
-    }
-
-    private void setFeatureIfSupported(DocumentBuilderFactory factory, String feature, boolean value) {
-        try {
-            factory.setFeature(feature, value);
-        } catch (Exception ignored) {
-            // Parser-specific optional feature.
+    private List<String> toSingleList(String value) {
+        String normalized = blankToNull(value);
+        if (normalized == null) {
+            return List.of();
         }
-    }
-
-    private String safeTrim(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private ErrorHandler silentErrorHandler() {
-        return new ErrorHandler() {
-            @Override
-            public void warning(org.xml.sax.SAXParseException exception) {
-            }
-
-            @Override
-            public void error(org.xml.sax.SAXParseException exception) throws SAXException {
-                throw exception;
-            }
-
-            @Override
-            public void fatalError(org.xml.sax.SAXParseException exception) throws SAXException {
-                throw exception;
-            }
-        };
-    }
-
-    private void ensureDir(Path path) {
-        try {
-            Files.createDirectories(path);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to initialize data directory", ex);
-        }
-    }
-
-    private record ExtractedMetadata(String title, String aircraft, String engine, String icnId) {
+        return List.of(normalized);
     }
 }

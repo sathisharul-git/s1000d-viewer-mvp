@@ -1,0 +1,8 @@
+{
+  "title": "Adjust lever - Procedure",
+  "icnId": "ICN-SAMPLE-AAA-0001-A-01",
+  "applicability": {
+    "aircraft": ["A320"],
+    "engine": ["CFM56"]
+  }
+}

@@ -1,6 +1,5 @@
 package com.example.s1000dviewer.modules;
 
-import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,20 +19,20 @@ public class ModuleController {
     }
 
     @GetMapping
-    public List<ModuleSummaryResponse> listModules(
+    public ModuleListResponse listModules(
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine
     ) {
         return moduleService.listModules(aircraft, engine);
     }
 
-    @GetMapping("/{dmId}")
-    public ModuleContentResponse getModule(
+    @GetMapping("/{dmId}/render")
+    public ModuleRenderResponse renderModule(
         @PathVariable String dmId,
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine
     ) {
-        return moduleService.getModuleContent(dmId, aircraft, engine);
+        return moduleService.renderModule(dmId, aircraft, engine);
     }
 
     @PostMapping("/upload")

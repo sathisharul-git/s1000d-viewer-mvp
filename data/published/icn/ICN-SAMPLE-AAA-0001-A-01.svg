@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="260" viewBox="0 0 520 260">
+  <rect x="10" y="10" width="500" height="240" rx="14" fill="none" stroke="black" stroke-width="2"/>
+  <text x="20" y="45" font-size="18">ICN-SAMPLE-AAA-0001-A-01</text>
+  <circle cx="180" cy="150" r="55" fill="none" stroke="black" stroke-width="2"/>
+  <line x1="180" y1="150" x2="320" y2="90" stroke="black" stroke-width="2"/>
+  <rect x="320" y="70" width="120" height="40" rx="10" fill="none" stroke="black" stroke-width="2"/>
+  <text x="330" y="96" font-size="14">Clamp Bolt</text>
+  <text x="20" y="230" font-size="12">Placeholder SVG. Replace with CGM→SVG output + hotspots.</text>
+</svg>
