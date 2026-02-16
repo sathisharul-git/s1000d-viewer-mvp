@@ -18,7 +18,7 @@ import com.s1000Dorg.viewer.storage.VaultService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -114,7 +114,7 @@ public class CsdbIndexer {
         dm.setDmId(dmId);
         dm.setVaultPath(relativePath);
         dm.setFileHash(fileHash);
-        dm.setLastIndexed(OffsetDateTime.now());
+        dm.setLastIndexed(LocalDateTime.now());
         dm.setDisplayName(extractDisplayName(document, dmId));
         dm.setModelIdent(firstAttr(document, "dmCode", "modelIdentCode"));
         dm.setSystemCode(firstAttr(document, "dmCode", "systemCode"));
@@ -156,7 +156,7 @@ public class CsdbIndexer {
             pmc.setPmcId(pmcId);
             pmc.setVaultPath(relativePath);
             pmc.setFileHash(fileHash);
-            pmc.setLastIndexed(OffsetDateTime.now());
+            pmc.setLastIndexed(LocalDateTime.now());
             pmc.setTitle(firstNonBlank(extractFirstTag(xml, "pmTitle"), pmcId));
             pmcRepository.save(pmc);
 
@@ -184,7 +184,7 @@ public class CsdbIndexer {
         icn.setVaultPath(relativePath);
         icn.setType(extensionOf(path));
         icn.setFileHash(fileHash);
-        icn.setLastIndexed(OffsetDateTime.now());
+        icn.setLastIndexed(LocalDateTime.now());
         icnRepository.save(icn);
     }
 

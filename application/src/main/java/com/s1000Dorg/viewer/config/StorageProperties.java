@@ -5,10 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "s1000d.storage")
 public class StorageProperties {
 
-    private String csdbRoot = "./data/csdb";
-    private String publishedRoot = "./data/published";
-    private String cacheRoot = "./data/cache";
-    private String auditRoot = "./data/audit";
+    private String csdbRoot = "../data/csdb";
+    private String publishedRoot = "../data/published";
+    private String cacheRoot = "../data/cache";
+    private String auditRoot = "../data/audit";
 
     public String getCsdbRoot() {
         return csdbRoot;

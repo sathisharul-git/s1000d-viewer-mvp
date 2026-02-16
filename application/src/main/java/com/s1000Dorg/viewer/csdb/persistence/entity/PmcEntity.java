@@ -4,7 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "pmc")
@@ -24,7 +24,7 @@ public class PmcEntity {
     private String fileHash;
 
     @Column(name = "last_indexed")
-    private OffsetDateTime lastIndexed;
+    private LocalDateTime lastIndexed;
 
     public String getPmcId() {
         return pmcId;
@@ -58,11 +58,11 @@ public class PmcEntity {
         this.fileHash = fileHash;
     }
 
-    public OffsetDateTime getLastIndexed() {
+    public LocalDateTime getLastIndexed() {
         return lastIndexed;
     }
 
-    public void setLastIndexed(OffsetDateTime lastIndexed) {
+    public void setLastIndexed(LocalDateTime lastIndexed) {
         this.lastIndexed = lastIndexed;
     }
 }

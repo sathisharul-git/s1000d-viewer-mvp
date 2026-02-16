@@ -3,8 +3,9 @@ package com.s1000Dorg.viewer.csdb.persistence.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "dm")
@@ -41,17 +42,20 @@ public class DmEntity {
     @Column(name = "file_hash", length = 128)
     private String fileHash;
 
+    @Lob
     @Column(name = "aircraft_tags")
     private String aircraftTags;
 
+    @Lob
     @Column(name = "engine_tags")
     private String engineTags;
 
+    @Lob
     @Column(name = "variant_tags")
     private String variantTags;
 
     @Column(name = "last_indexed")
-    private OffsetDateTime lastIndexed;
+    private LocalDateTime lastIndexed;
 
     public String getDmId() {
         return dmId;
@@ -157,11 +161,11 @@ public class DmEntity {
         this.variantTags = variantTags;
     }
 
-    public OffsetDateTime getLastIndexed() {
+    public LocalDateTime getLastIndexed() {
         return lastIndexed;
     }
 
-    public void setLastIndexed(OffsetDateTime lastIndexed) {
+    public void setLastIndexed(LocalDateTime lastIndexed) {
         this.lastIndexed = lastIndexed;
     }
 }

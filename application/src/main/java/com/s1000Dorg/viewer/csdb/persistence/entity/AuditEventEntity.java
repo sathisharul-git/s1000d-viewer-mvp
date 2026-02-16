@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 
@@ -28,6 +29,7 @@ public class AuditEventEntity {
     @Column(name = "dm_id", length = 255)
     private String dmId;
 
+    @Lob
     @Column(name = "details_json")
     private String detailsJson;
 
