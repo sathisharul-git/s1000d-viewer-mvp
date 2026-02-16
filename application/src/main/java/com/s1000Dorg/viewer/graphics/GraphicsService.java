@@ -87,7 +87,11 @@ public class GraphicsService {
                     var hotspotNodes = graphic.getElementsByTagName("hotspot");
                     for (int idx = 0; idx < hotspotNodes.getLength(); idx++) {
                         Element hotspotEl = (Element) hotspotNodes.item(idx);
-                        String id = safeTrim(hotspotEl.getAttribute("id"));
+                        String id = firstNonBlank(
+                            safeTrim(hotspotEl.getAttribute("applicationStructureName")),
+                            safeTrim(hotspotEl.getAttribute("applicationStructureIdent")),
+                            safeTrim(hotspotEl.getAttribute("id"))
+                        );
                         String label = firstNonBlank(
                             safeTrim(hotspotEl.getAttribute("hotspotTitle")),
                             safeTrim(hotspotEl.getAttribute("objectDescr")),
