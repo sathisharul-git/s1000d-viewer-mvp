@@ -1,6 +1,10 @@
 {
+  "dmId": "DMC-SAMPLE-AAA-00-00-00-00A-050A-C",
   "title": "Fuel System Check - XWB",
-  "aircraft": "A350",
-  "engine": "XWB",
-  "icnId": "ICN-SAMPLE-AAA-0001-A-01"
+  "icnId": "ICN-SAMPLE-AAA-0001-A-01",
+  "applicability": {
+    "aircraft": ["A350"],
+    "engine": ["XWB"],
+    "variant": ["MOD-22"]
+  }
 }

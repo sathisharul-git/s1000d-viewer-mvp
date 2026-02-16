@@ -57,10 +57,10 @@ export const api = {
 
   me: (token: string) => request<LoginResponse>("/api/auth/me", { method: "GET" }, token),
 
-  modules: (token: string, filters: { aircraft: string; engine: string }) =>
+  modules: (token: string, filters: { aircraft: string; engine: string; variant: string }) =>
     request<ModuleListResponse>(`/api/modules${buildQuery(filters)}`, { method: "GET" }, token),
 
-  moduleRender: (token: string, dmId: string, filters: { aircraft: string; engine: string }) =>
+  moduleRender: (token: string, dmId: string, filters: { aircraft: string; engine: string; variant: string }) =>
     request<ModuleRenderResponse>(
       `/api/modules/${encodeURIComponent(dmId)}/render${buildQuery(filters)}`,
       { method: "GET" },
@@ -69,12 +69,13 @@ export const api = {
 
   upload: (
     token: string,
-    payload: { file: File; aircraft: string; engine: string; title: string; icnId: string },
+    payload: { file: File; aircraft: string; engine: string; variant: string; title: string; icnId: string },
   ) => {
     const form = new FormData();
     form.append("file", payload.file);
     form.append("aircraft", payload.aircraft);
     form.append("engine", payload.engine);
+    form.append("variant", payload.variant);
     form.append("title", payload.title);
     form.append("icnId", payload.icnId);
     return request<UploadResponse>("/api/modules/upload", { method: "POST", body: form }, token);

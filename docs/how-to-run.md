@@ -12,7 +12,7 @@ From repository root:
 ```
 
 Backend URL: `http://localhost:8080`
-Default data root: `data/`
+Default roots are configured via `viewer.storage.*` in `application/src/main/resources/application.yml`.
 
 ## 2) Start webapp
 In a second terminal:
@@ -28,9 +28,9 @@ Webapp URL: `http://localhost:5173`
 Vite proxies `/api` to `http://localhost:8080`.
 
 ## 3) Demo credentials
-- Admin: `admin / admin123`
-- Engineer: `eng / eng123`
-- Viewer: `view / view123`
+- Admin: `admin / ${VIEWER_DEMO_ADMIN_PASSWORD:-admin123}`
+- Engineer: `eng / ${VIEWER_DEMO_ENGINEER_PASSWORD:-eng123}`
+- Viewer: `view / ${VIEWER_DEMO_VIEWER_PASSWORD:-view123}`
 
 ## 4) Run tests
 From repository root:
@@ -50,3 +50,18 @@ If jars are missing, backend returns demo fallback SVG for CGM-only graphics.
 - Launch profile: `Backend: Spring Boot`
 - File: `.vscode/launch.json`
 - Optional tasks: `.vscode/tasks.json`
+
+## 6) Environment overrides
+Examples:
+
+```powershell
+$env:VIEWER_SECURITY_JWT_SECRET = "replace-this-for-enterprise"
+$env:VIEWER_DEMO_ADMIN_PASSWORD = "replace-admin-password"
+$env:VIEWER_CORS_ORIGIN_1 = "http://localhost:5173"
+./gradlew :application:bootRun
+```
+
+Key groups:
+- `VIEWER_SECURITY_*` for JWT/OIDC/claims
+- `VIEWER_DEMO_*` for demo user passwords
+- `VIEWER_CORS_*` for allowed origins

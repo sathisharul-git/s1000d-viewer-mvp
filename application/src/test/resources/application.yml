@@ -1,4 +1,48 @@
-s1000d:
-  data-root: src/test/resources/test-data
-  jwt-secret: test-secret-test-secret-test-secret-test-secret
-  jwt-expiration-seconds: 3600
+viewer:
+  storage:
+    csdb-root: src/test/resources/test-data/csdb
+    published-root: src/test/resources/test-data/published
+    cache-root: src/test/resources/test-data/cache
+    audit-root: src/test/resources/test-data/audit
+  render:
+    published-preferred: true
+    quick-preview-enabled: true
+    cache-ttl-seconds: 3600
+  applicability:
+    unknown-policy: INCLUDE
+    allowed-dimensions:
+      - aircraft
+      - engine
+      - variant
+    fragment-evaluation:
+      enabled: false
+  policy:
+    enforcement:
+      enabled: false
+  security:
+    jwt:
+      secret: test-secret-test-secret-test-secret-test-secret
+      expiration-seconds: 3600
+    claim-mapping:
+      roles-claim: roles
+      username-claim: sub
+    oidc:
+      enabled: false
+      issuer-uri: ""
+      client-id: ""
+    cors:
+      allowed-origins:
+        - http://localhost:5173
+      allowed-methods: [GET, POST, PUT, DELETE, OPTIONS]
+      allowed-headers: ["*"]
+      exposed-headers: [Authorization]
+    demo-users:
+      - username: admin
+        password: admin123
+        roles: [ROLE_ADMIN]
+      - username: eng
+        password: eng123
+        roles: [ROLE_ENGINEER]
+      - username: view
+        password: view123
+        roles: [ROLE_VIEWER]
