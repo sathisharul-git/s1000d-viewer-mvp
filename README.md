@@ -1,6 +1,6 @@
 # S1000D Viewer (Gradle Multi-Module)
 
-This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML render pipelines, applicability filtering phases, and graphics/hotspots.
+This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML render pipelines, applicability filtering phases, graphics/hotspots, and an Oracle-backed CSDB metadata index.
 
 ## Repository layout
 - `application/` Spring Boot API
@@ -18,6 +18,16 @@ This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML
 - `data/published/hotspots/<icnId>.json` published hotspots
 - `data/cache/` render cache (generated, git-ignored)
 
+## Storage architecture
+- Database (Oracle/H2) stores metadata and relationships only:
+  - DM/PMC/ICN metadata
+  - vault relative paths
+  - file hashes and timestamps
+  - PMC→DM and DM→ICN relationships
+  - applicability metadata
+- Physical files remain in vault filesystem (`data/csdb`, `data/published`, `data/cache`).
+- XML/CGM/HTML content is never stored in the database.
+
 ## Features
 - Login with seeded users (`admin`, `eng`, `view`)
 - RBAC with upload restricted to `ADMIN`/`ENGINEER`
@@ -29,6 +39,7 @@ This repository contains a runnable S1000D viewer demo with auth/RBAC, dual HTML
 - Three-panel viewer with search highlight and hotspot navigation
 
 ## Quick start
+- Start Oracle XE (local dev): `docker compose up -d`
 - Backend: `./gradlew :application:bootRun`
 - Webapp:
   - `cd webapp`
@@ -41,9 +52,16 @@ Webapp: `http://localhost:5173`
 
 ## Runtime configuration
 - Java base package: `com.s1000Dorg.viewer`
-- App settings are externalized under `viewer.*` in `application/src/main/resources/application.yml`
-- Main groups: `viewer.storage`, `viewer.render`, `viewer.applicability`, `viewer.policy`, `viewer.security`
+- App settings are externalized in `application/src/main/resources/application.yml`
+- Main groups:
+  - `spring.datasource` / `spring.jpa` / `spring.flyway`
+  - `s1000d.storage`
+  - `viewer.render`, `viewer.applicability`, `viewer.policy`, `viewer.security`
 - Environment variables can override secure values (JWT secret and demo passwords).
+- Database env overrides:
+  - `S1000D_DB_URL`
+  - `S1000D_DB_USER`
+  - `S1000D_DB_PASS`
 
 ## Demo credentials (default dev values)
 - Admin: `admin / ${VIEWER_DEMO_ADMIN_PASSWORD:-admin123}`
@@ -53,6 +71,7 @@ Webapp: `http://localhost:5173`
 Wrapper scripts use bundled tooling in `.tools/` first (`.tools/jdk17`, `.tools/gradle`) when present.
 
 See `docs/how-to-run.md` for full Windows steps and:
+- `docs/local-oracle.md`
 - `docs/applicability-phase1.md`
 - `docs/applicability-phase2.md`
 - `docs/applicability-phase3.md`

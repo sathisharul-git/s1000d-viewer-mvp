@@ -1,0 +1,15 @@
+services:
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: s1000d-oracle-xe
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: "Oradoc_db1"
+      APP_USER: "s1000d_app"
+      APP_USER_PASSWORD: "s1000d_secret"
+    volumes:
+      - s1000d_oracle_data:/opt/oracle/oradata
+
+volumes:
+  s1000d_oracle_data:

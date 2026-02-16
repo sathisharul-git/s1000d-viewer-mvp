@@ -3,6 +3,16 @@
 ## Prerequisites
 - JDK 17+
 - Node.js 20+
+- Docker Desktop (for local Oracle XE)
+
+## 0) Start Oracle XE
+From repository root:
+
+```powershell
+docker compose up -d
+```
+
+Wait for `DATABASE IS READY TO USE!` in container logs.
 
 ## 1) Start backend (application)
 From repository root:
@@ -12,7 +22,8 @@ From repository root:
 ```
 
 Backend URL: `http://localhost:8080`
-Default roots are configured via `viewer.storage.*` in `application/src/main/resources/application.yml`.
+Default roots are configured via `s1000d.storage.*` in `application/src/main/resources/application.yml`.
+Default JDBC URL: `jdbc:oracle:thin:@localhost:1521/XEPDB1`.
 
 ## 2) Start webapp
 In a second terminal:
@@ -65,3 +76,4 @@ Key groups:
 - `VIEWER_SECURITY_*` for JWT/OIDC/claims
 - `VIEWER_DEMO_*` for demo user passwords
 - `VIEWER_CORS_*` for allowed origins
+- `S1000D_DB_*` for Oracle datasource overrides
