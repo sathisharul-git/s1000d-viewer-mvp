@@ -10,6 +10,34 @@ services:
       APP_USER_PASSWORD: "s1000d_secret"
     volumes:
       - s1000d_oracle_data:/opt/oracle/oradata
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: s1000d-openldap
+    ports:
+      - "389:389"
+    environment:
+      LDAP_ORGANISATION: "S1000D Org"
+      LDAP_DOMAIN: "s1000d.org"
+      LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_TLS: "false"
+    volumes:
+      - ./dev/ldap/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-bootstrap.ldif:ro
+      - s1000d_ldap_data:/var/lib/ldap
+      - s1000d_ldap_config:/etc/ldap/slapd.d
+  opa:
+    image: openpolicyagent/opa:0.68.0-static
+    container_name: s1000d-opa
+    ports:
+      - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
+    volumes:
+      - ./application/src/main/resources/opa:/policies:ro
 
 volumes:
   s1000d_oracle_data:
+  s1000d_ldap_data:
+  s1000d_ldap_config:

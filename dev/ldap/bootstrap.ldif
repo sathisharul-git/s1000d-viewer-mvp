@@ -1,0 +1,53 @@
+dn: ou=people,dc=s1000d,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=s1000d,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=admin,ou=people,dc=s1000d,dc=org
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+cn: Admin User
+sn: User
+uid: admin
+mail: admin@s1000d.org
+userPassword: admin123
+
+dn: uid=eng,ou=people,dc=s1000d,dc=org
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+cn: Engineer User
+sn: User
+uid: eng
+mail: eng@s1000d.org
+userPassword: eng123
+
+dn: uid=view,ou=people,dc=s1000d,dc=org
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+cn: Viewer User
+sn: User
+uid: view
+mail: view@s1000d.org
+userPassword: view123
+
+dn: cn=s1000d-admin,ou=groups,dc=s1000d,dc=org
+objectClass: groupOfNames
+cn: s1000d-admin
+member: uid=admin,ou=people,dc=s1000d,dc=org
+
+dn: cn=s1000d-engineer,ou=groups,dc=s1000d,dc=org
+objectClass: groupOfNames
+cn: s1000d-engineer
+member: uid=eng,ou=people,dc=s1000d,dc=org
+
+dn: cn=s1000d-viewer,ou=groups,dc=s1000d,dc=org
+objectClass: groupOfNames
+cn: s1000d-viewer
+member: uid=view,ou=people,dc=s1000d,dc=org
+
