@@ -1,7 +1,6 @@
 package com.s1000Dorg.viewer.modules;
 
 import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
-import com.s1000Dorg.viewer.adapters.fs.PublishedManifestEntry;
 import com.s1000Dorg.viewer.applicability.ApplicabilityContext;
 import com.s1000Dorg.viewer.applicability.ApplicabilityDecision;
 import com.s1000Dorg.viewer.applicability.ApplicabilityInfo;
@@ -10,16 +9,19 @@ import com.s1000Dorg.viewer.applicability.ApplicabilityService;
 import com.s1000Dorg.viewer.applicability.eval.ApplicabilityEvaluator;
 import com.s1000Dorg.viewer.config.ApplicabilityProperties;
 import com.s1000Dorg.viewer.config.PolicyProperties;
+import com.s1000Dorg.viewer.csdb.index.CsdbIndexer;
+import com.s1000Dorg.viewer.csdb.persistence.entity.DmEntity;
+import com.s1000Dorg.viewer.csdb.persistence.repository.DmIcnRepository;
+import com.s1000Dorg.viewer.csdb.persistence.repository.DmRepository;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
 import com.s1000Dorg.viewer.render.RenderFacade;
 import com.s1000Dorg.viewer.render.RenderedDm;
+import com.s1000Dorg.viewer.storage.VaultService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,12 +32,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import org.xml.sax.InputSource;
 
 @Service
 public class ModuleService {
@@ -51,6 +51,10 @@ public class ModuleService {
     private final RenderFacade renderFacade;
     private final XmlValidationService xmlValidationService;
     private final ObjectMapper objectMapper;
+    private final DmRepository dmRepository;
+    private final DmIcnRepository dmIcnRepository;
+    private final VaultService vaultService;
+    private final CsdbIndexer csdbIndexer;
 
     public ModuleService(
         FsDataRepository repository,
@@ -61,7 +65,11 @@ public class ModuleService {
         ApplicabilityRuleEngine applicabilityRuleEngine,
         RenderFacade renderFacade,
         XmlValidationService xmlValidationService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        DmRepository dmRepository,
+        DmIcnRepository dmIcnRepository,
+        VaultService vaultService,
+        CsdbIndexer csdbIndexer
     ) {
         this.repository = repository;
         this.applicabilityService = applicabilityService;
@@ -72,6 +80,10 @@ public class ModuleService {
         this.renderFacade = renderFacade;
         this.xmlValidationService = xmlValidationService;
         this.objectMapper = objectMapper;
+        this.dmRepository = dmRepository;
+        this.dmIcnRepository = dmIcnRepository;
+        this.vaultService = vaultService;
+        this.csdbIndexer = csdbIndexer;
     }
 
     public ModuleListResponse listModules(String aircraft, String engine, String variant) {
@@ -105,8 +117,12 @@ public class ModuleService {
 
         DataModuleDescriptor descriptor = resolveDescriptor(dmId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not found"));
-        if (!descriptor.hasPublishedPreview() && repository.findDmXml(dmId).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module content not found");
+        if (!descriptor.hasPublishedPreview()) {
+            try {
+                vaultService.resolveDmFile(dmId);
+            } catch (ResponseStatusException notFound) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module content not found");
+            }
         }
 
         ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
@@ -186,6 +202,7 @@ public class ModuleService {
 
             Path metaPath = repository.csdbMetaDir().resolve(dmId + ".json").normalize();
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(metaPath.toFile(), meta);
+            csdbIndexer.reindexDm(dmId);
 
             return new ModuleUploadResponse(dmId, "Module uploaded successfully");
         } catch (IllegalArgumentException badXml) {
@@ -196,56 +213,43 @@ public class ModuleService {
     }
 
     private List<DataModuleDescriptor> resolveDescriptors() {
-        Map<String, PublishedManifestEntry> manifest = repository.readPublishedManifest();
-
-        Map<String, DataModuleDescriptor> descriptors = new LinkedHashMap<>();
-        for (Path path : repository.listDmXmlFiles()) {
-            String dmId = dmIdFromPath(path);
-            descriptors.put(dmId.toUpperCase(Locale.ROOT), buildDescriptor(dmId, manifest));
-        }
-
-        for (PublishedManifestEntry entry : manifest.values()) {
-            String dmId = entry.dmId();
-            if (dmId == null || dmId.isBlank()) {
-                continue;
-            }
-            descriptors.putIfAbsent(dmId.toUpperCase(Locale.ROOT), buildDescriptor(dmId, manifest));
-        }
-
-        return descriptors.values().stream().toList();
+        return dmRepository.findAll().stream()
+            .map(this::buildDescriptor)
+            .sorted(Comparator.comparing(DataModuleDescriptor::dmId))
+            .toList();
     }
 
     private Optional<DataModuleDescriptor> resolveDescriptor(String dmId) {
-        return resolveDescriptors().stream().filter(item -> item.dmId().equalsIgnoreCase(dmId)).findFirst();
+        return dmRepository.findByDmIdIgnoreCase(dmId).map(this::buildDescriptor);
     }
 
-    private DataModuleDescriptor buildDescriptor(String dmId, Map<String, PublishedManifestEntry> manifest) {
-        PublishedManifestEntry entry = manifest.get(dmId.toUpperCase(Locale.ROOT));
-        String manifestTitle = entry == null ? "" : nullToEmpty(entry.title());
-
-        String title = firstNonBlank(
-            manifestTitle,
-            readMetaText(dmId, "title"),
-            extractTitleFromXml(dmId),
-            dmId
+    private DataModuleDescriptor buildDescriptor(DmEntity dmEntity) {
+        String dmId = dmEntity.getDmId();
+        String title = firstNonBlank(dmEntity.getDisplayName(), readMetaText(dmId, "title"), dmId);
+        String primaryIcn = dmIcnRepository.findByDmIdIgnoreCase(dmId).stream()
+            .map(rel -> rel.getId().getIcnId())
+            .findFirst()
+            .orElse("");
+        Applicability dbApplicability = new Applicability(
+            splitCsv(dmEntity.getAircraftTags()),
+            splitCsv(dmEntity.getEngineTags()),
+            splitCsv(dmEntity.getVariantTags())
         );
-
-        String primaryIcn = firstNonBlank(
-            readMetaText(dmId, "icnId"),
-            entry != null && entry.icns() != null && !entry.icns().isEmpty() ? entry.icns().get(0) : "",
-            extractFirstIcnFromXml(dmId)
-        );
-
         ApplicabilityInfo applicabilityInfo = applicabilityService.resolve(dmId);
         Applicability applicability = applicabilityInfo.applicability();
-        boolean hasPublished = repository.hasPublishedHtml(dmId);
+        String applicabilitySource = applicabilityInfo.source().toApiValue();
+        if (applicability.isUnknown() && !dbApplicability.isUnknown()) {
+            applicability = dbApplicability;
+            applicabilitySource = "meta";
+        }
+        boolean hasPublished = vaultService.resolvePublishedHtml(dmId).isPresent();
         String source = hasPublished ? "published" : "csdb";
 
         return new DataModuleDescriptor(
             dmId,
             title,
             applicability,
-            applicabilityInfo.source().toApiValue(),
+            applicabilitySource,
             source,
             hasPublished,
             primaryIcn
@@ -262,59 +266,6 @@ public class ModuleService {
             .filter(com.fasterxml.jackson.databind.JsonNode::isTextual)
             .map(node -> node.asText("").trim())
             .orElse("");
-    }
-
-    private String extractTitleFromXml(String dmId) {
-        return repository.readDmXml(dmId)
-            .map(xml -> {
-                try {
-                    var factory = DocumentBuilderFactory.newInstance();
-                    factory.setNamespaceAware(false);
-                    factory.setExpandEntityReferences(false);
-                    var builder = factory.newDocumentBuilder();
-                    var doc = builder.parse(new InputSource(new StringReader(xml)));
-                    String techName = firstTag(doc, "techName");
-                    String infoName = firstTag(doc, "infoName");
-                    if (!techName.isBlank() && !infoName.isBlank()) {
-                        return techName + " - " + infoName;
-                    }
-                    return firstNonBlank(techName, infoName);
-                } catch (Exception ignored) {
-                    return "";
-                }
-            })
-            .orElse("");
-    }
-
-    private String extractFirstIcnFromXml(String dmId) {
-        return repository.readDmXml(dmId)
-            .map(xml -> {
-                String upper = xml.toUpperCase(Locale.ROOT);
-                int idx = upper.indexOf("ICN-");
-                if (idx < 0) {
-                    return "";
-                }
-                int end = idx;
-                while (end < upper.length()) {
-                    char ch = upper.charAt(end);
-                    if (Character.isLetterOrDigit(ch) || ch == '-' || ch == '_') {
-                        end++;
-                        continue;
-                    }
-                    break;
-                }
-                return upper.substring(idx, end);
-            })
-            .orElse("");
-    }
-
-    private String firstTag(org.w3c.dom.Document doc, String tagName) {
-        var nodes = doc.getElementsByTagName(tagName);
-        if (nodes.getLength() == 0 || nodes.item(0) == null) {
-            return "";
-        }
-        String text = nodes.item(0).getTextContent();
-        return text == null ? "" : text.trim();
     }
 
     private void validateDmId(String dmId) {
@@ -358,6 +309,16 @@ public class ModuleService {
             return List.of();
         }
         return List.of(normalized);
+    }
+
+    private List<String> splitCsv(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .toList();
     }
 }
 

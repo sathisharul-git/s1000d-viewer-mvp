@@ -1,6 +1,7 @@
 package com.s1000Dorg.viewer.graphics;
 
 import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
+import com.s1000Dorg.viewer.storage.VaultService;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -8,6 +9,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -27,27 +29,41 @@ public class GraphicsService {
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
 
     private final FsDataRepository repository;
+    private final VaultService vaultService;
     private final CgmToSvgConverter converter;
 
-    public GraphicsService(FsDataRepository repository, CgmToSvgConverter converter) {
+    public GraphicsService(FsDataRepository repository, VaultService vaultService, CgmToSvgConverter converter) {
         this.repository = repository;
+        this.vaultService = vaultService;
         this.converter = converter;
     }
 
     public String getSvg(String icnId) {
         validateIcnId(icnId);
 
-        Path graphicPath = repository.findGraphicPath(icnId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Graphic not found"));
+        Path graphicPath = vaultService.resolveIcnFile(icnId);
 
         String extension = extensionOf(graphicPath).toLowerCase(Locale.ROOT);
         try {
             return switch (extension) {
                 case ".svg" -> Files.readString(graphicPath, StandardCharsets.UTF_8);
                 case ".cgm" -> {
-                    try (InputStream inputStream = Files.newInputStream(graphicPath)) {
-                        yield converter.convert(inputStream);
+                    Path cachePath = vaultService.ensureCachePath(icnId);
+                    if (Files.isRegularFile(cachePath) && Files.getLastModifiedTime(cachePath).compareTo(Files.getLastModifiedTime(graphicPath)) >= 0) {
+                        yield Files.readString(cachePath, StandardCharsets.UTF_8);
                     }
+                    String converted;
+                    try (InputStream inputStream = Files.newInputStream(graphicPath)) {
+                        converted = converter.convert(inputStream);
+                    }
+                    Files.writeString(
+                        cachePath,
+                        converted,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING
+                    );
+                    yield converted;
                 }
                 case ".png" -> wrapRasterAsSvg(graphicPath, "image/png", icnId);
                 case ".jpg", ".jpeg" -> wrapRasterAsSvg(graphicPath, "image/jpeg", icnId);

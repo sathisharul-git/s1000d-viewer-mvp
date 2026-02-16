@@ -5,6 +5,9 @@ import com.s1000Dorg.viewer.adapters.fs.PublishedManifestEntry;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
+import com.s1000Dorg.viewer.storage.VaultService;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,13 +24,21 @@ public class PublishedRenderService {
     private static final Pattern ICN_PATTERN = Pattern.compile("ICN-[A-Z0-9_-]+");
 
     private final FsDataRepository repository;
+    private final VaultService vaultService;
 
-    public PublishedRenderService(FsDataRepository repository) {
+    public PublishedRenderService(FsDataRepository repository, VaultService vaultService) {
         this.repository = repository;
+        this.vaultService = vaultService;
     }
 
     public Optional<RenderedDm> render(String dmId, DataModuleDescriptor descriptor, ApplicabilityResult applicabilityResult) {
-        Optional<String> html = repository.readPublishedHtml(dmId);
+        Optional<String> html = vaultService.resolvePublishedHtml(dmId).map(path -> {
+            try {
+                return Files.readString(path, StandardCharsets.UTF_8);
+            } catch (Exception ex) {
+                throw new IllegalStateException("Failed to read published HTML", ex);
+            }
+        });
         if (html.isEmpty()) {
             return Optional.empty();
         }

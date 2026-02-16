@@ -2,6 +2,8 @@ package com.s1000Dorg.viewer.render;
 
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -22,10 +24,10 @@ import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
-import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
 import com.s1000Dorg.viewer.modules.XmlValidationService;
+import com.s1000Dorg.viewer.storage.VaultService;
 
 @Service
 public class QuickRenderService {
@@ -33,19 +35,24 @@ public class QuickRenderService {
     private static final Pattern DM_REF_PATTERN = Pattern.compile("DMC-[A-Z0-9_-]+");
     private static final Pattern ICN_PATTERN = Pattern.compile("ICN-[A-Z0-9_-]+");
 
-    private final FsDataRepository repository;
+    private final VaultService vaultService;
     private final RenderCache renderCache;
     private final XmlValidationService xmlValidationService;
 
-    public QuickRenderService(FsDataRepository repository, RenderCache renderCache, XmlValidationService xmlValidationService) {
-        this.repository = repository;
+    public QuickRenderService(VaultService vaultService, RenderCache renderCache, XmlValidationService xmlValidationService) {
+        this.vaultService = vaultService;
         this.renderCache = renderCache;
         this.xmlValidationService = xmlValidationService;
     }
 
     public RenderedDm render(String dmId, DataModuleDescriptor descriptor, ApplicabilityResult applicabilityResult) {
-        String xml = repository.readDmXml(dmId)
-            .orElseThrow(() -> new IllegalStateException("DM XML not found for quick rendering"));
+        String xml;
+        try {
+            Path xmlPath = vaultService.resolveDmFile(dmId);
+            xml = Files.readString(xmlPath, StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            throw new IllegalStateException("DM XML not found for quick rendering", ex);
+        }
 
         xmlValidationService.validateWellFormed(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
 
