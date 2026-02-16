@@ -73,6 +73,37 @@ public class FsDataRepository {
         }
     }
 
+    public List<Path> listPmcXmlFiles() {
+        if (!Files.isDirectory(csdbRoot)) {
+            return List.of();
+        }
+
+        try (var stream = Files.walk(csdbRoot)) {
+            return stream
+                .filter(Files::isRegularFile)
+                .filter(this::isPmcFile)
+                .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)))
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Failed to list PMCs", ex);
+        }
+    }
+
+    public List<Path> listIcnFiles() {
+        if (!Files.isDirectory(csdbIcnDir)) {
+            return List.of();
+        }
+        try (var stream = Files.walk(csdbIcnDir)) {
+            return stream
+                .filter(Files::isRegularFile)
+                .filter(this::isGraphicFile)
+                .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)))
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Failed to list graphics", ex);
+        }
+    }
+
     public Optional<Path> findDmXml(String dmId) {
         validateSafeId(dmId, "Invalid dmId");
         Path candidate = csdbDmDir.resolve(dmId + ".xml").normalize();
@@ -220,6 +251,10 @@ public class FsDataRepository {
         return csdbMetaDir;
     }
 
+    public Path csdbRoot() {
+        return csdbRoot;
+    }
+
     public void ensureWritableDataDirs() {
         createDirectories(csdbDmDir);
         createDirectories(csdbMetaDir);
@@ -245,6 +280,21 @@ public class FsDataRepository {
     private boolean isDmFile(Path path) {
         String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
         return name.startsWith("dmc-") && name.endsWith(".xml");
+    }
+
+    private boolean isPmcFile(Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.startsWith("pmc-") && name.endsWith(".xml");
+    }
+
+    private boolean isGraphicFile(Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        for (String extension : GRAPHIC_EXTENSIONS) {
+            if (name.endsWith(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void createDirectories(Path path) {
