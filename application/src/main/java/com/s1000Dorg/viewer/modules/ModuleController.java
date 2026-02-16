@@ -1,5 +1,6 @@
 package com.s1000Dorg.viewer.modules;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,7 @@ public class ModuleController {
     }
 
     @GetMapping
+    @PreAuthorize("@authorizationService.canViewModuleList(authentication)")
     public ModuleListResponse listModules(
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine,
@@ -28,6 +30,7 @@ public class ModuleController {
     }
 
     @GetMapping("/{dmId}/render")
+    @PreAuthorize("@authorizationService.canViewDm(authentication, #dmId, #aircraft, #engine, #variant)")
     public ModuleRenderResponse renderModule(
         @PathVariable String dmId,
         @RequestParam(required = false) String aircraft,
@@ -38,6 +41,7 @@ public class ModuleController {
     }
 
     @PostMapping("/upload")
+    @PreAuthorize("@authorizationService.canUploadModule(authentication)")
     public ModuleUploadResponse uploadModule(
         @RequestParam("file") MultipartFile file,
         @RequestParam(required = false) String aircraft,

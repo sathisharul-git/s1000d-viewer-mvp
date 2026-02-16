@@ -3,6 +3,7 @@ package com.s1000Dorg.viewer.graphics;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,12 +20,14 @@ public class GraphicsController {
     }
 
     @GetMapping(value = "/{icnId}", produces = "image/svg+xml")
+    @PreAuthorize("@authorizationService.canViewGraphic(authentication, #icnId)")
     public ResponseEntity<String> getGraphic(@PathVariable String icnId) {
         String svg = graphicsService.getSvg(icnId);
         return ResponseEntity.ok().contentType(MediaType.valueOf("image/svg+xml")).body(svg);
     }
 
     @GetMapping("/{icnId}/hotspots")
+    @PreAuthorize("@authorizationService.canViewGraphic(authentication, #icnId)")
     public List<Hotspot> getHotspots(@PathVariable String icnId) {
         return graphicsService.getHotspots(icnId);
     }
