@@ -456,6 +456,27 @@ button:hover {
   margin-bottom: 0.5rem;
 }
 
+.preview-assets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.58rem;
+}
+
+.asset-card {
+  border: 1px solid #b7d5dc;
+  border-radius: 0.56rem;
+  background: #f8fcfd;
+  padding: 0.36rem;
+  display: grid;
+  gap: 0.32rem;
+}
+
+.asset-card.active {
+  border-color: #14b8a6;
+  box-shadow: inset 0 0 0 1px #7dd3fc;
+}
+
 .asset-btn {
   border: 1px solid #99dce0;
   border-radius: 0.45rem;
@@ -469,6 +490,56 @@ button:hover {
 .asset-btn.active {
   background: #99f6e4;
   border-color: #2dd4bf;
+}
+
+.asset-hotspots {
+  border: 1px solid #d3e6eb;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.3rem 0.35rem;
+}
+
+.asset-hotspots summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #145f69;
+}
+
+.hotspot-link-list {
+  margin-top: 0.3rem;
+  display: grid;
+  gap: 0.22rem;
+  max-height: 160px;
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.hotspot-link {
+  border: 1px solid #c7dfea;
+  background: #f8fafc;
+  color: #0f3f4c;
+  border-radius: 0.36rem;
+  font-size: 0.74rem;
+  text-align: left;
+  padding: 0.2rem 0.34rem;
+}
+
+.hotspot-link-selected {
+  border-color: #dc2626;
+  box-shadow: inset 0 0 0 1px #dc2626;
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.hotspot-empty {
+  border: 1px dashed #c2dae3;
+  background: #f8fbff;
+  border-radius: 0.38rem;
+  font-size: 0.74rem;
+  color: #315667;
+  padding: 0.26rem 0.34rem;
 }
 
 .preview {
@@ -552,20 +623,29 @@ button:hover {
   display: block;
 }
 
-.hotspot {
-  position: absolute;
-  border: 2px solid #f97316;
-  background: rgba(251, 146, 60, 0.18);
-  color: #7c2d12;
-  padding: 0;
-  overflow: hidden;
+.graphic-svg .s1000d-hotspot .s1000d-hotspot-shape {
+  fill-opacity: 0;
+  stroke-opacity: 0;
+  pointer-events: all;
 }
 
-.hotspot span {
-  font-size: 0.72rem;
-  display: inline-block;
-  background: rgba(255, 255, 255, 0.75);
-  padding: 0.1rem 0.25rem;
+.graphic-svg .s1000d-hotspot.hotspot-highlighted .s1000d-hotspot-shape,
+.graphic-svg .s1000d-hotspot .s1000d-hotspot-shape.hotspot-highlighted {
+  fill: #fecaca;
+  fill-opacity: 0.16;
+  stroke: #dc2626;
+  stroke-opacity: 1;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.graphic-svg text.hotspot-callout-highlighted,
+.graphic-svg tspan.hotspot-callout-highlighted {
+  fill: #b91c1c !important;
+  stroke: #fee2e2;
+  stroke-width: 0.45;
+  paint-order: stroke fill;
+  font-weight: 700;
 }
 
 .dm-rendered .dm-content {

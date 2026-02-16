@@ -1,4 +1,4 @@
-import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, authStorage } from "./api/client";
 import { BreadcrumbBar } from "./components/breadcrumb/BreadcrumbBar";
 import { ThreePaneLayout, type PaneWidths } from "./components/layout/ThreePaneLayout";
@@ -11,6 +11,8 @@ type ViewerLayoutState = {
   rightOpen: boolean;
 };
 
+type HotspotsByIcn = Record<string, Hotspot[]>;
+type HotspotStatusByIcn = Record<string, string>;
 
 const layoutStorageKey = "s1000d.viewer.layout.v3";
 const defaultLayoutState: ViewerLayoutState = {
@@ -136,6 +138,45 @@ function detectGraphicId(target: HTMLElement): string {
   return (hrefMatch?.[1] ?? "").trim();
 }
 
+function normalizeHotspotId(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.startsWith("#") ? trimmed.slice(1).trim() : trimmed;
+}
+
+function hotspotRowKey(icnId: string, hotspotId: string): string {
+  return `${icnId}::${normalizeHotspotId(hotspotId)}`;
+}
+
+function resolveKnownHotspotId(rawId: string, hotspots: Hotspot[]): string {
+  const normalized = normalizeHotspotId(rawId);
+  if (!normalized) {
+    return "";
+  }
+  const exact = hotspots.find((item) => normalizeHotspotId(item.id) === normalized);
+  if (exact) {
+    return exact.id;
+  }
+  const base = normalized.split("-")[0];
+  const baseMatch = hotspots.find((item) => normalizeHotspotId(item.id) === base);
+  return baseMatch?.id ?? normalized;
+}
+
+function detectHotspotIdFromSvgTarget(target: HTMLElement, knownHotspots: Hotspot[]): string {
+  const hotspotNode = target.closest<HTMLElement>("[data-hotspot-id]");
+  if (hotspotNode) {
+    return resolveKnownHotspotId(hotspotNode.getAttribute("data-hotspot-id") ?? "", knownHotspots);
+  }
+
+  const idNode = target.closest<HTMLElement>("[id]");
+  if (!idNode) {
+    return "";
+  }
+  return resolveKnownHotspotId(idNode.getAttribute("id") ?? "", knownHotspots);
+}
+
 export function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -152,10 +193,13 @@ export function App() {
 
   const [selectedDmId, setSelectedDmId] = useState("");
   const [selectedContent, setSelectedContent] = useState<ModuleRenderResponse | null>(null);
-  const [selectedGraphicId, setSelectedGraphicId] = useState("");
+  const [selectedIcnId, setSelectedIcnId] = useState("");
+  const [selectedHotspotId, setSelectedHotspotId] = useState("");
 
   const [graphicSvg, setGraphicSvg] = useState("");
-  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [hotspotsByIcn, setHotspotsByIcn] = useState<HotspotsByIcn>({});
+  const [loadingHotspotsByIcn, setLoadingHotspotsByIcn] = useState<HotspotStatusByIcn>({});
+  const [hotspotErrorsByIcn, setHotspotErrorsByIcn] = useState<HotspotStatusByIcn>({});
 
   const [searchTerm, setSearchTerm] = useState("");
   const [layout, setLayout] = useState<ViewerLayoutState>(() => readLayoutState());
@@ -170,6 +214,8 @@ export function App() {
 
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [showUsers, setShowUsers] = useState(false);
+  const hotspotRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const graphicSvgRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     writeLayoutState(layout);
@@ -232,7 +278,8 @@ export function App() {
         const rows = response.modules;
         setModules(rows);
         if (!rows.find((row) => row.dmId === selectedDmId)) {
-          setSelectedDmId(rows[0]?.dmId ?? "");
+          const nextDmId = rows[0]?.dmId ?? "";
+          setSelectedDmId(nextDmId);
         }
       })
       .catch((err: unknown) => setError(String(err)));
@@ -241,9 +288,12 @@ export function App() {
   useEffect(() => {
     if (!token || !selectedDmId) {
       setSelectedContent(null);
-      setSelectedGraphicId("");
+      setSelectedIcnId("");
+      setSelectedHotspotId("");
       setGraphicSvg("");
-      setHotspots([]);
+      setHotspotsByIcn({});
+      setLoadingHotspotsByIcn({});
+      setHotspotErrorsByIcn({});
       return;
     }
 
@@ -255,18 +305,24 @@ export function App() {
           return;
         }
         setSelectedContent(content);
-        setSelectedGraphicId("");
+        setSelectedIcnId("");
+        setSelectedHotspotId("");
         setGraphicSvg("");
-        setHotspots([]);
+        setHotspotsByIcn({});
+        setLoadingHotspotsByIcn({});
+        setHotspotErrorsByIcn({});
       } catch (err) {
         if (cancelled) {
           return;
         }
         setError(String(err));
         setSelectedContent(null);
-        setSelectedGraphicId("");
+        setSelectedIcnId("");
+        setSelectedHotspotId("");
         setGraphicSvg("");
-        setHotspots([]);
+        setHotspotsByIcn({});
+        setLoadingHotspotsByIcn({});
+        setHotspotErrorsByIcn({});
       }
     })();
 
@@ -276,40 +332,165 @@ export function App() {
   }, [filters, selectedDmId, token]);
 
   useEffect(() => {
-    if (!token || !selectedGraphicId) {
+    const icnIds = selectedContent?.assets.icns ?? [];
+    if (!token || icnIds.length === 0) {
+      setHotspotsByIcn({});
+      setLoadingHotspotsByIcn({});
+      setHotspotErrorsByIcn({});
+      return;
+    }
+
+    const loadingMap: HotspotStatusByIcn = {};
+    icnIds.forEach((icnId) => {
+      loadingMap[icnId] = "loading";
+    });
+    setLoadingHotspotsByIcn(loadingMap);
+    setHotspotErrorsByIcn({});
+
+    let cancelled = false;
+    (async () => {
+      const resolvedMap: HotspotsByIcn = {};
+      const errors: HotspotStatusByIcn = {};
+      await Promise.all(
+        icnIds.map(async (icnId) => {
+          try {
+            resolvedMap[icnId] = await api.hotspots(token, icnId);
+          } catch (err) {
+            resolvedMap[icnId] = [];
+            errors[icnId] = String(err);
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const completeLoadingMap: HotspotStatusByIcn = {};
+      icnIds.forEach((icnId) => {
+        completeLoadingMap[icnId] = "";
+      });
+      setLoadingHotspotsByIcn(completeLoadingMap);
+      setHotspotErrorsByIcn(errors);
+      setHotspotsByIcn(resolvedMap);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedContent, token]);
+
+  useEffect(() => {
+    if (!token || !selectedIcnId) {
       setGraphicSvg("");
-      setHotspots([]);
       return;
     }
 
     let cancelled = false;
     (async () => {
       try {
-        const [svg, hs] = await Promise.all([api.graphic(token, selectedGraphicId), api.hotspots(token, selectedGraphicId)]);
+        const svg = await api.graphic(token, selectedIcnId);
         if (cancelled) {
           return;
         }
         setGraphicSvg(svg);
-        setHotspots(hs);
       } catch (err) {
         if (cancelled) {
           return;
         }
         setError(String(err));
         setGraphicSvg("");
-        setHotspots([]);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedGraphicId, token]);
+  }, [selectedIcnId, token]);
+
+  useEffect(() => {
+    if (!selectedIcnId || !selectedHotspotId) {
+      return;
+    }
+    const key = hotspotRowKey(selectedIcnId, selectedHotspotId);
+    const node = hotspotRowRefs.current[key];
+    node?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedHotspotId, selectedIcnId, hotspotsByIcn]);
+
+  useEffect(() => {
+    const host = graphicSvgRef.current;
+    if (!host) {
+      return;
+    }
+
+    const svg = host.querySelector<SVGSVGElement>("svg");
+    if (!svg) {
+      return;
+    }
+
+    svg.querySelectorAll(".hotspot-highlighted").forEach((node) => {
+      node.classList.remove("hotspot-highlighted");
+    });
+    svg.querySelectorAll(".hotspot-callout-highlighted").forEach((node) => {
+      node.classList.remove("hotspot-callout-highlighted");
+    });
+
+    const targetHotspotId = normalizeHotspotId(selectedHotspotId);
+    if (!targetHotspotId) {
+      return;
+    }
+
+    const hotspots = Array.from(svg.querySelectorAll<HTMLElement>("[data-hotspot-id]"));
+    const matchedNodes = hotspots.filter((node) => {
+      const candidate = normalizeHotspotId(node.getAttribute("data-hotspot-id") ?? "");
+      if (!candidate) {
+        return false;
+      }
+      if (candidate === targetHotspotId) {
+        return true;
+      }
+      const candidateBase = candidate.split("-")[0];
+      const targetBase = targetHotspotId.split("-")[0];
+      return candidateBase === targetBase;
+    });
+    if (!matchedNodes.length) {
+      return;
+    }
+
+    for (const matchedNode of matchedNodes) {
+      const hotspotGroup = matchedNode.closest<SVGGElement>(".s1000d-hotspot") ?? (matchedNode as unknown as SVGGElement);
+      hotspotGroup.classList.add("hotspot-highlighted");
+      const shape = hotspotGroup.querySelector<SVGGraphicsElement>(".s1000d-hotspot-shape");
+      if (shape) {
+        shape.classList.add("hotspot-highlighted");
+      }
+    }
+
+    const targetBase = targetHotspotId.split("-")[0];
+    const textMarkers = Array.from(svg.querySelectorAll<SVGTextElement>("text, tspan"));
+    for (const marker of textMarkers) {
+      const token = normalizeHotspotId(marker.textContent ?? "").replace(/[^\w.-]+/g, "");
+      if (token === targetBase) {
+        marker.classList.add("hotspot-callout-highlighted");
+      }
+    }
+
+    const firstHotspotGroup =
+      matchedNodes[0]?.closest<SVGGElement>(".s1000d-hotspot") ?? (matchedNodes[0] as unknown as SVGGElement | undefined);
+    firstHotspotGroup?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+  }, [graphicSvg, selectedHotspotId, selectedIcnId]);
 
   const highlighted = useMemo(
     () => highlightHtml(selectedContent?.html ?? "<p>Select a data module to preview content.</p>", searchTerm),
     [searchTerm, selectedContent],
   );
+
+  const selectedGraphicHotspots = useMemo(() => {
+    if (!selectedIcnId) {
+      return [];
+    }
+    return hotspotsByIcn[selectedIcnId] ?? [];
+  }, [hotspotsByIcn, selectedIcnId]);
 
   function logout() {
     setToken("");
@@ -317,8 +498,11 @@ export function App() {
     setUserNameDisplay("");
     setSelectedContent(null);
     setGraphicSvg("");
-    setHotspots([]);
-    setSelectedGraphicId("");
+    setHotspotsByIcn({});
+    setLoadingHotspotsByIcn({});
+    setHotspotErrorsByIcn({});
+    setSelectedIcnId("");
+    setSelectedHotspotId("");
     setSelectedDmId("");
     setCatalog([]);
     setModules([]);
@@ -384,12 +568,17 @@ export function App() {
     }
   }
 
-  function openGraphic(icnId: string) {
+  function openGraphic(icnId: string, hotspotId?: string) {
     const normalized = icnId.trim();
     if (!normalized) {
       return;
     }
-    setSelectedGraphicId(normalized);
+    setSelectedIcnId(normalized);
+    if (hotspotId) {
+      setSelectedHotspotId(normalizeHotspotId(hotspotId));
+    } else {
+      setSelectedHotspotId("");
+    }
     setLayout((prev) => ({ ...prev, rightOpen: true }));
   }
 
@@ -407,6 +596,14 @@ export function App() {
       return fromCatalog.dmId;
     }
     return normalized;
+  }
+
+  function selectHotspot(icnId: string, hotspotId: string) {
+    const nextHotspotId = normalizeHotspotId(hotspotId);
+    if (!nextHotspotId) {
+      return;
+    }
+    openGraphic(icnId, nextHotspotId);
   }
 
   function handlePreviewClick(event: MouseEvent<HTMLDivElement>) {
@@ -431,6 +628,18 @@ export function App() {
         setSelectedDmId(resolveModuleDmId(dmId));
       }
     }
+  }
+
+  function handleSvgClick(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+    const hotspotId = detectHotspotIdFromSvgTarget(target, selectedGraphicHotspots);
+    if (!hotspotId) {
+      return;
+    }
+    setSelectedHotspotId(normalizeHotspotId(hotspotId));
   }
 
   async function loadUsers() {
@@ -486,6 +695,7 @@ export function App() {
   const canUpload = hasRole(roles, "ROLE_ADMIN") || hasRole(roles, "ROLE_ENGINEER");
   const isAdmin = hasRole(roles, "ROLE_ADMIN");
   const selectedDmLabel = selectedContent?.meta.title || selectedDmId || "No module selected";
+  const selectedHotspotKey = normalizeHotspotId(selectedHotspotId);
 
   return (
     <div className="app-shell">
@@ -523,7 +733,7 @@ export function App() {
 
       <BreadcrumbBar
         selectedDmLabel={selectedDmLabel}
-        selectedGraphicId={selectedGraphicId}
+        selectedGraphicId={selectedIcnId}
         filters={filters}
         aircraftOptions={aircraftOptions}
         engineOptions={engineOptions}
@@ -615,16 +825,47 @@ export function App() {
             ) : null}
 
             {selectedContent?.assets.icns.length ? (
-              <div className="preview-assets">
+              <div className="preview-assets-grid">
                 {selectedContent.assets.icns.map((icnId) => (
-                  <button
-                    key={icnId}
-                    type="button"
-                    className={icnId === selectedGraphicId ? "asset-btn active" : "asset-btn"}
-                    onClick={() => openGraphic(icnId)}
-                  >
-                    Open Graphic: {icnId}
-                  </button>
+                  <section key={icnId} className={icnId === selectedIcnId ? "asset-card active" : "asset-card"}>
+                    <button type="button" className={icnId === selectedIcnId ? "asset-btn active" : "asset-btn"} onClick={() => openGraphic(icnId)}>
+                      Open Graphic: {icnId}
+                    </button>
+                    <details className="asset-hotspots" open={icnId === selectedIcnId}>
+                      <summary>Hotspots</summary>
+                      <div className="hotspot-link-list">
+                        {loadingHotspotsByIcn[icnId] === "loading" ? <div className="hotspot-empty">Loading hotspots...</div> : null}
+                        {loadingHotspotsByIcn[icnId] !== "loading" && hotspotErrorsByIcn[icnId] ? (
+                          <div className="hotspot-empty">Unable to load hotspots.</div>
+                        ) : null}
+                        {loadingHotspotsByIcn[icnId] !== "loading" &&
+                        !hotspotErrorsByIcn[icnId] &&
+                        (hotspotsByIcn[icnId]?.length ?? 0) === 0 ? (
+                          <div className="hotspot-empty">No hotspots available.</div>
+                        ) : null}
+                        {(hotspotsByIcn[icnId] ?? []).map((hotspot) => {
+                          const rowId = hotspotRowKey(icnId, hotspot.id);
+                          const isSelected = icnId === selectedIcnId && normalizeHotspotId(hotspot.id) === selectedHotspotKey;
+                          return (
+                            <button
+                              key={rowId}
+                              ref={(node) => {
+                                hotspotRowRefs.current[rowId] = node;
+                              }}
+                              type="button"
+                              className={isSelected ? "hotspot-link hotspot-link-selected" : "hotspot-link"}
+                              data-hotspot-id={hotspot.id}
+                              data-icn-id={icnId}
+                              onClick={() => selectHotspot(icnId, hotspot.id)}
+                              title={hotspot.targetDmId ? `${hotspot.label} (target ${hotspot.targetDmId})` : hotspot.label}
+                            >
+                              {hotspot.label || hotspot.id}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  </section>
                 ))}
               </div>
             ) : null}
@@ -654,34 +895,22 @@ export function App() {
             {layout.rightOpen ? (
               <>
                 <div className="graphic-meta">
-                  {selectedGraphicId ? `Selected graphic: ${selectedGraphicId}` : "Select a graphic from preview to load SVG."}
+                  {selectedIcnId ? `Selected graphic: ${selectedIcnId}` : "Select a graphic from preview to load SVG."}
                 </div>
-                {!selectedGraphicId ? (
+                {!selectedIcnId ? (
                   <div className="graphics-empty">Select a graphic in Preview to enable this panel.</div>
                 ) : (
                   <div className="graphic-wrap">
-                    {graphicSvg ? <div className="graphic-svg" dangerouslySetInnerHTML={{ __html: graphicSvg }} /> : <p>No image available.</p>}
-                    {hotspots.map((hotspot) => (
-                      <button
-                        key={hotspot.id}
-                        className="hotspot"
-                        style={{
-                          left: `${hotspot.x}%`,
-                          top: `${hotspot.y}%`,
-                          width: `${hotspot.w}%`,
-                          height: `${hotspot.h}%`,
-                        }}
-                        title={hotspot.label}
-                        onClick={() => {
-                          if (hotspot.targetDmId) {
-                            setFilters(defaultApplicabilityFilters);
-                            setSelectedDmId(resolveModuleDmId(hotspot.targetDmId));
-                          }
-                        }}
-                      >
-                        <span>{hotspot.label}</span>
-                      </button>
-                    ))}
+                    {graphicSvg ? (
+                      <div
+                        ref={graphicSvgRef}
+                        className="graphic-svg"
+                        onClick={handleSvgClick}
+                        dangerouslySetInnerHTML={{ __html: graphicSvg }}
+                      />
+                    ) : (
+                      <p>No image available.</p>
+                    )}
                   </div>
                 )}
               </>
