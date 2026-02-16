@@ -1,9 +1,11 @@
-viewer:
+s1000d:
   storage:
     csdb-root: src/test/resources/test-data/csdb
     published-root: src/test/resources/test-data/published
     cache-root: src/test/resources/test-data/cache
     audit-root: src/test/resources/test-data/audit
+
+viewer:
   render:
     published-preferred: true
     quick-preview-enabled: true

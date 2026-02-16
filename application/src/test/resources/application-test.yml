@@ -1,9 +1,26 @@
-viewer:
+spring:
+  datasource:
+    url: jdbc:h2:mem:s1000d_test;MODE=Oracle;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+s1000d:
   storage:
     csdb-root: src/test/resources/test-data/csdb
     published-root: src/test/resources/test-data/published
     cache-root: src/test/resources/test-data/cache
     audit-root: src/test/resources/test-data/audit
+
+viewer:
   render:
     published-preferred: true
     quick-preview-enabled: true
