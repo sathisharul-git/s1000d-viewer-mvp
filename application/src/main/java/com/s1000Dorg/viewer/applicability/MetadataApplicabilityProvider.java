@@ -1,14 +1,16 @@
 package com.s1000Dorg.viewer.applicability;
 
-import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
-import com.s1000Dorg.viewer.adapters.fs.PublishedManifestEntry;
-import com.s1000Dorg.viewer.domain.Applicability;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+
 import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
+import com.s1000Dorg.viewer.adapters.fs.PublishedManifestEntry;
+import com.s1000Dorg.viewer.domain.Applicability;
 
 @Component
 public class MetadataApplicabilityProvider implements ApplicabilityProvider {

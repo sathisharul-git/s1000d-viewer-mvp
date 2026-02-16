@@ -3,7 +3,7 @@ server:
 
 viewer:
   storage:
-    csdb-root: ../data/csdb
+    csdb-root: ../sample-data/csdb/S1000D_4-1_Bike_Samples
     published-root: ../data/published
     cache-root: ../data/cache
     audit-root: ../data/audit

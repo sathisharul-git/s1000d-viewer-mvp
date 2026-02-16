@@ -4,7 +4,6 @@ public enum ApplicabilitySource {
     PUBLISHED,
     META,
     NONE;
-
     public String toApiValue() {
         return name().toLowerCase();
     }

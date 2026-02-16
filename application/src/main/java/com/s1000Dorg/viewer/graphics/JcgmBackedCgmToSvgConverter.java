@@ -12,14 +12,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
@@ -29,36 +32,61 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JcgmBackedCgmToSvgConverter.class);
     private static final String CGM_READER_SPI_CLASS = "net.sf.jcgm.imageio.plugins.cgm.CGMImageReaderSpi";
+    private static final List<String> DEFAULT_LIB_CANDIDATES = List.of(
+        "application/libs/jcgm",
+        "libs/jcgm",
+        "../application/libs/jcgm"
+    );
 
     private final DemoCgmToSvgConverter fallbackConverter;
     private final Object probeLock = new Object();
+    private final List<Path> additionalJarDirs;
 
     private volatile boolean probeComplete = false;
     private volatile boolean jcgmAvailable = false;
     private volatile ClassLoader jcgmClassLoader;
+    private volatile String probeMessage = "Probe not executed";
 
+    private record DecodeResult(Optional<BufferedImage> image, String reason) {
+    }
+
+    @Autowired
     public JcgmBackedCgmToSvgConverter(DemoCgmToSvgConverter fallbackConverter) {
+        this(fallbackConverter, null, List.of());
+    }
+
+    JcgmBackedCgmToSvgConverter(DemoCgmToSvgConverter fallbackConverter, ClassLoader jcgmClassLoader) {
+        this(fallbackConverter, jcgmClassLoader, List.of());
+    }
+
+    JcgmBackedCgmToSvgConverter(
+        DemoCgmToSvgConverter fallbackConverter,
+        ClassLoader jcgmClassLoader,
+        List<Path> additionalJarDirs
+    ) {
         this.fallbackConverter = fallbackConverter;
+        this.jcgmClassLoader = jcgmClassLoader;
+        this.additionalJarDirs = additionalJarDirs == null ? List.of() : List.copyOf(additionalJarDirs);
     }
 
     @Override
     public String convert(InputStream cgmStream) throws IOException {
         byte[] payload = cgmStream.readAllBytes();
         if (payload.length == 0) {
-            return fallbackConverter.convert(new ByteArrayInputStream(payload));
+            return fallbackConverter.convert(new ByteArrayInputStream(payload), "Empty CGM payload.");
         }
 
-        Optional<BufferedImage> decoded = tryDecodeWithJcgm(payload);
-        if (decoded.isPresent()) {
-            return wrapImageAsSvg(decoded.get(), payload);
+        DecodeResult decoded = tryDecodeWithJcgm(payload);
+        if (decoded.image().isPresent()) {
+            return wrapImageAsSvg(decoded.image().get(), payload);
         }
 
-        return fallbackConverter.convert(new ByteArrayInputStream(payload));
+        return fallbackConverter.convert(new ByteArrayInputStream(payload), decoded.reason());
     }
 
-    private Optional<BufferedImage> tryDecodeWithJcgm(byte[] payload) {
+    DecodeResult tryDecodeWithJcgm(byte[] payload) {
         if (!ensureJcgmAvailable()) {
-            return Optional.empty();
+            return new DecodeResult(Optional.empty(), probeMessage);
         }
 
         try {
@@ -66,24 +94,28 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
             Object spi = spiClass.getDeclaredConstructor().newInstance();
             if (!(spi instanceof javax.imageio.spi.ImageReaderSpi imageReaderSpi)) {
                 LOGGER.warn("CGM reader SPI does not implement ImageReaderSpi: {}", spiClass.getName());
-                return Optional.empty();
+                return new DecodeResult(Optional.empty(), "CGM reader SPI is not compatible with ImageReaderSpi.");
             }
 
             ImageReader reader = imageReaderSpi.createReaderInstance();
             try (ImageInputStream imageInput = ImageIO.createImageInputStream(new ByteArrayInputStream(payload))) {
                 reader.setInput(imageInput, true, true);
-                BufferedImage image = reader.read(0);
-                return Optional.ofNullable(image);
+                ImageReadParam readParam = reader.getDefaultReadParam();
+                BufferedImage image = reader.read(0, readParam);
+                if (image == null) {
+                    return new DecodeResult(Optional.empty(), "CGM decoded to an empty image.");
+                }
+                return new DecodeResult(Optional.of(image), "CGM decoded with jcgm.");
             } finally {
                 reader.dispose();
             }
-        } catch (Exception ex) {
-            LOGGER.warn("jcgm conversion failed, using fallback converter: {}", ex.getMessage());
-            return Optional.empty();
+        } catch (Throwable ex) {
+            LOGGER.warn("jcgm conversion failed, using fallback converter: {}", ex.toString());
+            return new DecodeResult(Optional.empty(), "jcgm conversion failed: " + ex.getClass().getSimpleName());
         }
     }
 
-    private boolean ensureJcgmAvailable() {
+    boolean ensureJcgmAvailable() {
         if (probeComplete) {
             return jcgmAvailable;
         }
@@ -93,14 +125,24 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
                 return jcgmAvailable;
             }
 
-            ClassLoader resolved = resolveJcgmClassLoader();
-            if (resolved != null) {
-                jcgmClassLoader = resolved;
-                jcgmAvailable = true;
-                LOGGER.info("Using jcgm CGM reader: {}", classLoaderDescription(resolved));
+            if (jcgmClassLoader == null) {
+                jcgmClassLoader = resolveJcgmClassLoader();
+            }
+
+            if (jcgmClassLoader != null) {
+                jcgmAvailable = canInstantiateReaderSpi(jcgmClassLoader);
+                probeMessage = jcgmAvailable
+                    ? "jcgm probe succeeded"
+                    : "jcgm probe failed: reader SPI class present but instantiation failed";
             } else {
                 jcgmAvailable = false;
-                LOGGER.info("jcgm jars not found. Using fallback CGM converter.");
+                probeMessage = "jcgm probe failed: no loader could resolve jcgm jars";
+            }
+
+            if (jcgmAvailable) {
+                LOGGER.info("Using jcgm CGM reader: {} ({})", classLoaderDescription(jcgmClassLoader), probeMessage);
+            } else {
+                LOGGER.info("Using fallback CGM converter. {}", probeMessage);
             }
 
             probeComplete = true;
@@ -116,7 +158,7 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
 
         for (Path jarDir : candidateJarDirs()) {
             Optional<ClassLoader> loader = tryBuildJarClassLoader(jarDir);
-            if (loader.isPresent() && classExists(CGM_READER_SPI_CLASS, loader.get())) {
+            if (loader.isPresent()) {
                 return loader.get();
             }
         }
@@ -125,15 +167,19 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
     }
 
     private List<Path> candidateJarDirs() {
-        List<Path> candidates = new ArrayList<>();
-        candidates.add(Path.of("application", "libs", "jcgm"));
-        candidates.add(Path.of("libs", "jcgm"));
-        candidates.add(Path.of("..", "application", "libs", "jcgm"));
-        return candidates;
+        LinkedHashSet<Path> candidates = new LinkedHashSet<>();
+        for (String candidate : DEFAULT_LIB_CANDIDATES) {
+            candidates.add(Path.of(candidate).toAbsolutePath().normalize());
+        }
+        for (Path additionalJarDir : additionalJarDirs) {
+            candidates.add(additionalJarDir.toAbsolutePath().normalize());
+        }
+        return new ArrayList<>(candidates);
     }
 
     private Optional<ClassLoader> tryBuildJarClassLoader(Path jarDir) {
         Path normalized = jarDir.toAbsolutePath().normalize();
+        LOGGER.info("Checking for jcgm JARs in: {}", normalized);
         if (!Files.isDirectory(normalized)) {
             return Optional.empty();
         }
@@ -158,6 +204,7 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
             if (urls.isEmpty()) {
                 return Optional.empty();
             }
+            LOGGER.info("Found {} jcgm candidate jar(s) in {}", urls.size(), normalized);
 
             ClassLoader parent = Thread.currentThread().getContextClassLoader();
             return Optional.of(new URLClassLoader(urls.toArray(URL[]::new), parent));
@@ -172,9 +219,21 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
             return false;
         }
         try {
-            Class.forName(fqcn, true, classLoader);
+            Class.forName(fqcn, false, classLoader);
             return true;
         } catch (Throwable ex) {
+            LOGGER.info("Class {} unavailable in {}: {}", fqcn, classLoaderDescription(classLoader), ex.toString());
+            return false;
+        }
+    }
+
+    private boolean canInstantiateReaderSpi(ClassLoader classLoader) {
+        try {
+            Class<?> spiClass = Class.forName(CGM_READER_SPI_CLASS, false, classLoader);
+            Object spi = spiClass.getDeclaredConstructor().newInstance();
+            return spi instanceof javax.imageio.spi.ImageReaderSpi;
+        } catch (Throwable ex) {
+            LOGGER.warn("jcgm SPI probe failed in {}: {}", classLoaderDescription(classLoader), ex.toString());
             return false;
         }
     }
@@ -193,10 +252,9 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" role="img" aria-label="CGM rendered image">
               <rect width="%d" height="%d" fill="#f8fafc" />
               <image href="data:image/png;base64,%s" x="0" y="0" width="%d" height="%d" preserveAspectRatio="xMidYMid meet" />
-              <rect x="8" y="8" width="%d" height="28" fill="#0f172a" fill-opacity="0.82" rx="6" />
-              <text x="16" y="27" fill="#e2e8f0" font-size="14" font-family="Segoe UI, sans-serif">Rendered via jcgm (CGM source bytes: %d)</text>
+              <metadata>Rendered via jcgm; source-bytes=%d</metadata>
             </svg>
-            """.formatted(width, height, width, height, base64, width, height, Math.max(160, width - 16), sourceBytes);
+            """.formatted(width, height, width, height, base64, width, height, sourceBytes);
     }
 
     private String classLoaderDescription(ClassLoader classLoader) {
@@ -207,4 +265,3 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
         return classLoader.getClass().getName();
     }
 }
-

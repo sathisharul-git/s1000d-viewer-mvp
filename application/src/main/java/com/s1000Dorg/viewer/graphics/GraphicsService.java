@@ -1,6 +1,8 @@
 package com.s1000Dorg.viewer.graphics;
 
 import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +13,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -155,13 +158,28 @@ public class GraphicsService {
         byte[] bytes = Files.readAllBytes(imagePath);
         String base64 = Base64.getEncoder().encodeToString(bytes);
         String escapedId = escape(icnId);
+        int[] dimensions = readRasterDimensions(bytes);
+        int width = dimensions[0];
+        int height = dimensions[1];
 
         return """
-            <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 800\" role=\"img\" aria-label=\"%s\">
-              <rect width=\"1200\" height=\"800\" fill=\"#f8fafc\" />
-              <image href=\"data:%s;base64,%s\" x=\"0\" y=\"0\" width=\"1200\" height=\"800\" preserveAspectRatio=\"xMidYMid meet\" />
+            <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 %d %d\" role=\"img\" aria-label=\"%s\">
+              <rect width=\"%d\" height=\"%d\" fill=\"#f8fafc\" />
+              <image href=\"data:%s;base64,%s\" x=\"0\" y=\"0\" width=\"%d\" height=\"%d\" preserveAspectRatio=\"xMidYMid meet\" />
             </svg>
-            """.formatted(escapedId, mimeType, base64);
+            """.formatted(width, height, escapedId, width, height, mimeType, base64, width, height);
+    }
+
+    private int[] readRasterDimensions(byte[] bytes) {
+        try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+            BufferedImage image = ImageIO.read(input);
+            if (image == null) {
+                return new int[]{1200, 800};
+            }
+            return new int[]{Math.max(1, image.getWidth()), Math.max(1, image.getHeight())};
+        } catch (IOException ex) {
+            return new int[]{1200, 800};
+        }
     }
 
     private DocumentBuilderFactory xmlFactory() {

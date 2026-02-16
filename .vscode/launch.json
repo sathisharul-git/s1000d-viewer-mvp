@@ -6,7 +6,8 @@
       "name": "Backend: Spring Boot",
       "request": "launch",
       "mainClass": "com.s1000Dorg.viewer.S1000dViewerApplication",
-      "projectName": "application"
+      "projectName": "application",
+      "javaExec": "${workspaceFolder}\\.tools\\jdk21\\jdk-21.0.4+7\\bin\\java.exe"
     }
   ]
 }

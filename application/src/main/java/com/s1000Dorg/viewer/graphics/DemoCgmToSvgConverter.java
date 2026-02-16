@@ -6,17 +6,26 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Component;
 
 @Component
 public class DemoCgmToSvgConverter implements CgmToSvgConverter {
 
+    public DemoCgmToSvgConverter() {
+    }
+    
     private static final Pattern ICN_PATTERN = Pattern.compile("ICN-[A-Z0-9-]+");
 
     @Override
     public String convert(InputStream cgmStream) throws IOException {
+        return convert(cgmStream, "No native CGM converter available.");
+    }
+
+    public String convert(InputStream cgmStream, String detail) throws IOException {
         byte[] payload = cgmStream.readAllBytes();
         String icn = detectIcn(payload);
+        String safeDetail = escape(detail == null || detail.isBlank() ? "No additional diagnostics." : detail.trim());
 
         return """
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 460" role="img" aria-label="CGM conversion unavailable">
@@ -29,9 +38,10 @@ public class DemoCgmToSvgConverter implements CgmToSvgConverter {
               <line x1="52" y1="238" x2="1048" y2="238" stroke="#e2e8f0" stroke-width="1"/>
               <text x="52" y="286" fill="#0f766e" font-size="18" font-family="Segoe UI, sans-serif">Fallback behavior:</text>
               <text x="52" y="318" fill="#334155" font-size="17" font-family="Segoe UI, sans-serif">- If .svg/.png/.jpg/.gif exists for the same ICN, viewer serves it directly.</text>
-              <text x="52" y="348" fill="#334155" font-size="17" font-family="Segoe UI, sans-serif">- This message is shown only when source is CGM-only and converter jars are missing.</text>
+              <text x="52" y="348" fill="#334155" font-size="17" font-family="Segoe UI, sans-serif">- This message is shown only when source is CGM-only and converter jars are missing or incompatible.</text>
+              <text x="52" y="382" fill="#64748b" font-size="15" font-family="Segoe UI, sans-serif">Diagnostics: %s</text>
             </svg>
-            """.formatted(escape(icn), payload.length);
+            """.formatted(escape(icn), payload.length, safeDetail);
     }
 
     private String detectIcn(byte[] payload) {

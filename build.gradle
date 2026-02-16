@@ -2,10 +2,12 @@ plugins {
     id 'base'
 }
 
-group = 'com.example'
+group = 'com.s1000Dorg.viewer'
 version = '0.1.0'
 
 allprojects {
+    group = rootProject.group
+    version = rootProject.version
     repositories {
         mavenCentral()
     }

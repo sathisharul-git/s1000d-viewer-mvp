@@ -23,6 +23,7 @@ public class FsDataRepository {
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
     private static final List<String> GRAPHIC_EXTENSIONS = List.of(".svg", ".png", ".jpg", ".jpeg", ".gif", ".cgm");
 
+    private final Path csdbRoot;
     private final Path csdbDmDir;
     private final Path csdbMetaDir;
     private final Path csdbIcnDir;
@@ -38,15 +39,15 @@ public class FsDataRepository {
     private final PublishedManifestLoader publishedManifestLoader;
 
     public FsDataRepository(StorageProperties storageProperties, ObjectMapper objectMapper, PublishedManifestLoader publishedManifestLoader) {
-        Path csdbRoot = Path.of(storageProperties.getCsdbRoot()).toAbsolutePath().normalize();
+        this.csdbRoot = Path.of(storageProperties.getCsdbRoot()).toAbsolutePath().normalize();
         Path publishedRoot = Path.of(storageProperties.getPublishedRoot()).toAbsolutePath().normalize();
         this.cacheDir = Path.of(storageProperties.getCacheRoot()).toAbsolutePath().normalize();
         this.auditDir = Path.of(storageProperties.getAuditRoot()).toAbsolutePath().normalize();
 
-        this.csdbDmDir = csdbRoot.resolve("dm").normalize();
-        this.csdbMetaDir = csdbRoot.resolve("meta").normalize();
-        this.csdbIcnDir = csdbRoot.resolve("icn").normalize();
-        this.csdbHotspotsDir = csdbRoot.resolve("hotspots").normalize();
+        this.csdbDmDir = resolveSubDirOrRoot(this.csdbRoot, "dm");
+        this.csdbMetaDir = resolveSubDirOrRoot(this.csdbRoot, "meta");
+        this.csdbIcnDir = resolveSubDirOrRoot(this.csdbRoot, "icn");
+        this.csdbHotspotsDir = resolveSubDirOrRoot(this.csdbRoot, "hotspots");
         this.publishedDmDir = publishedRoot.resolve("dm").normalize();
         this.publishedIcnDir = publishedRoot.resolve("icn").normalize();
         this.publishedHotspotsDir = publishedRoot.resolve("hotspots").normalize();
@@ -61,7 +62,7 @@ public class FsDataRepository {
             return List.of();
         }
 
-        try (var stream = Files.list(csdbDmDir)) {
+        try (var stream = Files.walk(csdbDmDir)) {
             return stream
                 .filter(Files::isRegularFile)
                 .filter(this::isDmFile)
@@ -77,6 +78,23 @@ public class FsDataRepository {
         Path candidate = csdbDmDir.resolve(dmId + ".xml").normalize();
         if (Files.isRegularFile(candidate)) {
             return Optional.of(candidate);
+        }
+        Path upperCandidate = csdbDmDir.resolve((dmId + ".xml").toUpperCase(Locale.ROOT)).normalize();
+        if (Files.isRegularFile(upperCandidate)) {
+            return Optional.of(upperCandidate);
+        }
+        if (Files.isDirectory(csdbDmDir)) {
+            try (var stream = Files.walk(csdbDmDir)) {
+                Optional<Path> match = stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().equalsIgnoreCase(dmId + ".xml"))
+                    .findFirst();
+                if (match.isPresent()) {
+                    return match;
+                }
+            } catch (IOException ex) {
+                throw new IllegalStateException("Failed to resolve DM XML", ex);
+            }
         }
         return Optional.empty();
     }
@@ -117,7 +135,29 @@ public class FsDataRepository {
         validateSafeId(dmId, "Invalid dmId");
         Path metaPath = csdbMetaDir.resolve(dmId + ".json").normalize();
         if (!Files.isRegularFile(metaPath)) {
-            return Optional.empty();
+            Path legacyMetaPath = csdbMetaDir.resolve(dmId + ".meta.json").normalize();
+            if (Files.isRegularFile(legacyMetaPath)) {
+                metaPath = legacyMetaPath;
+            } else if (Files.isDirectory(csdbMetaDir)) {
+                try (var stream = Files.walk(csdbMetaDir)) {
+                    Optional<Path> found = stream
+                        .filter(Files::isRegularFile)
+                        .filter(path -> {
+                            String name = path.getFileName().toString();
+                            return name.equalsIgnoreCase(dmId + ".json") || name.equalsIgnoreCase(dmId + ".meta.json");
+                        })
+                        .findFirst();
+                    if (found.isPresent()) {
+                        metaPath = found.get();
+                    } else {
+                        return Optional.empty();
+                    }
+                } catch (IOException ex) {
+                    throw new IllegalStateException("Failed to resolve module metadata", ex);
+                }
+            } else {
+                return Optional.empty();
+            }
         }
         try {
             return Optional.of(objectMapper.readTree(metaPath.toFile()));
@@ -213,6 +253,14 @@ public class FsDataRepository {
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to create data directories", ex);
         }
+    }
+
+    private Path resolveSubDirOrRoot(Path root, String child) {
+        Path candidate = root.resolve(child).normalize();
+        if (Files.isDirectory(candidate)) {
+            return candidate;
+        }
+        return root;
     }
 }
 

@@ -1,9 +1,5 @@
 package com.s1000Dorg.viewer.render;
 
-import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
-import com.s1000Dorg.viewer.domain.ApplicabilityResult;
-import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
-import com.s1000Dorg.viewer.modules.XmlValidationService;
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
@@ -13,16 +9,23 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
+
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
+
+import com.s1000Dorg.viewer.adapters.fs.FsDataRepository;
+import com.s1000Dorg.viewer.domain.ApplicabilityResult;
+import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
+import com.s1000Dorg.viewer.modules.XmlValidationService;
 
 @Service
 public class QuickRenderService {
@@ -71,6 +74,12 @@ public class QuickRenderService {
         return rendered;
     }
 
+    /**
+     * @param cached
+     * @param descriptor
+     * @param result
+     * @return
+     */
     private RenderedDm withApplicability(RenderedDm cached, DataModuleDescriptor descriptor, ApplicabilityResult result) {
         return new RenderedDm(
             cached.dmId(),
@@ -83,7 +92,6 @@ public class QuickRenderService {
             cached.dmRefs()
         );
     }
-
     private String transform(String xml) {
         try {
             TransformerFactory factory = transformerFactory();
@@ -105,7 +113,7 @@ public class QuickRenderService {
             return TransformerFactory.newInstance();
         }
     }
-
+// Extracts a title from the DM XML using techName and infoName, with a fallback to the provided title if extraction fails.
     private String extractTitle(String xml, String fallbackTitle) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
