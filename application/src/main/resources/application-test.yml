@@ -14,6 +14,10 @@ spring:
     enabled: false
 
 s1000d:
+  opa:
+    enabled: false
+
+s1000d:
   storage:
     csdb-root: ./data/csdb
     published-root: ./data/published

@@ -14,6 +14,8 @@ spring:
     enabled: false
 
 s1000d:
+  opa:
+    enabled: false
   storage:
     csdb-root: src/test/resources/test-data/csdb
     published-root: src/test/resources/test-data/published

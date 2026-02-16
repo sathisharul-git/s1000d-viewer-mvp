@@ -1,0 +1,13 @@
+viewer:
+  security:
+    demo-users:
+      - username: admin
+        password: ${VIEWER_DEMO_ADMIN_PASSWORD:admin123}
+        roles: [ROLE_ADMIN]
+      - username: eng
+        password: ${VIEWER_DEMO_ENGINEER_PASSWORD:eng123}
+        roles: [ROLE_ENGINEER]
+      - username: view
+        password: ${VIEWER_DEMO_VIEWER_PASSWORD:view123}
+        roles: [ROLE_VIEWER]
+

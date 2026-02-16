@@ -2,9 +2,10 @@ package com.s1000Dorg.viewer;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = { LdapAutoConfiguration.class })
 @ConfigurationPropertiesScan
 public class S1000dViewerApplication {
 

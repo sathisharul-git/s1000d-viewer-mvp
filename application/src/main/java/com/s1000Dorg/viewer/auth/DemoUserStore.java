@@ -5,10 +5,12 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("dev-auth")
 public class DemoUserStore {
 
     private final Map<String, DemoUser> users = new LinkedHashMap<>();

@@ -1,3 +1,9 @@
+spring:
+  profiles:
+    group:
+      test:
+        - dev-auth
+
 s1000d:
   storage:
     csdb-root: src/test/resources/test-data/csdb

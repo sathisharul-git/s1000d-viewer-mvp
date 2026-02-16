@@ -23,10 +23,23 @@ spring:
 
 s1000d:
   storage:
-    csdb-root: ./data/csdb
-    published-root: ./data/published
-    cache-root: ./data/cache
-    audit-root: ./data/audit
+    csdb-root: ${S1000D_CSDB_ROOT:../data/csdb}
+    published-root: ${S1000D_PUBLISHED_ROOT:../data/published}
+    cache-root: ${S1000D_CACHE_ROOT:../data/cache}
+    audit-root: ${S1000D_AUDIT_ROOT:../data/audit}
+  ldap:
+    url: ${S1000D_LDAP_URL:ldap://localhost:389}
+    base-dn: ${S1000D_LDAP_BASE_DN:dc=s1000d,dc=org}
+    manager-dn: ${S1000D_LDAP_MANAGER_DN:cn=admin,dc=s1000d,dc=org}
+    manager-password: ${S1000D_LDAP_MANAGER_PASS:admin}
+    user-dn-pattern: ${S1000D_LDAP_USER_DN_PATTERN:uid={0},ou=people}
+    group-search-base: ${S1000D_LDAP_GROUP_SEARCH_BASE:ou=groups}
+    group-search-filter: ${S1000D_LDAP_GROUP_SEARCH_FILTER:(member=uid={0},ou=people,dc=s1000d,dc=org)}
+  opa:
+    enabled: ${S1000D_OPA_ENABLED:true}
+    url: ${S1000D_OPA_URL:http://localhost:8181}
+    policy-path: ${S1000D_OPA_POLICY_PATH:/v1/data/s1000d/authz/allow}
+    allow-read-on-error: ${S1000D_OPA_ALLOW_READ_ON_ERROR:false}
 
 viewer:
   indexer:
@@ -71,13 +84,3 @@ viewer:
         - "*"
       exposed-headers:
         - Authorization
-    demo-users:
-      - username: admin
-        password: ${VIEWER_DEMO_ADMIN_PASSWORD:admin123}
-        roles: [ROLE_ADMIN]
-      - username: eng
-        password: ${VIEWER_DEMO_ENGINEER_PASSWORD:eng123}
-        roles: [ROLE_ENGINEER]
-      - username: view
-        password: ${VIEWER_DEMO_VIEWER_PASSWORD:view123}
-        roles: [ROLE_VIEWER]
