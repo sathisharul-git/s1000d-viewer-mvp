@@ -26,6 +26,12 @@ class ConfigurationBindingTest {
     @Autowired
     private SecurityProperties securityProperties;
 
+    @Autowired
+    private LdapProperties ldapProperties;
+
+    @Autowired
+    private OpaProperties opaProperties;
+
     @Test
     void bindsEnterpriseConfigurationProperties() {
         assertThat(storageProperties.getCsdbRoot()).contains("src/test/resources/test-data/csdb");
@@ -38,5 +44,7 @@ class ConfigurationBindingTest {
         assertThat(policyProperties.getEnforcement().isEnabled()).isFalse();
         assertThat(securityProperties.getDemoUsers()).hasSize(3);
         assertThat(securityProperties.getClaimMapping().getRolesClaim()).isEqualTo("roles");
+        assertThat(ldapProperties.getBaseDn()).isEqualTo("dc=s1000d,dc=org");
+        assertThat(opaProperties.isEnabled()).isFalse();
     }
 }
