@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
@@ -723,10 +724,12 @@ public class DmHtmlRenderer {
 
     private DocumentBuilderFactory secureFactory() throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", false);
+        setFeatureIfSupported(factory, XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
         setFeatureIfSupported(factory, "http://xml.org/sax/features/external-general-entities", false);
         setFeatureIfSupported(factory, "http://xml.org/sax/features/external-parameter-entities", false);
         setFeatureIfSupported(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
         factory.setNamespaceAware(false);
         return factory;

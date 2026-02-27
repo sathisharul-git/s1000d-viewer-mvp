@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -257,13 +258,15 @@ public class CsdbIndexer {
             String sanitized = sanitizeXml(xml);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             try {
-                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
+                factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
                 factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
                 factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                 factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
             } catch (Exception ignored) {
                 // Parser feature support varies by runtime.
             }
+            factory.setXIncludeAware(false);
             factory.setNamespaceAware(false);
             factory.setExpandEntityReferences(false);
             return factory.newDocumentBuilder().parse(new InputSource(new java.io.StringReader(sanitized)));

@@ -1,6 +1,7 @@
 package com.s1000Dorg.viewer.modules;
 
 import java.io.InputStream;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.stereotype.Service;
 import org.xml.sax.SAXException;
@@ -26,10 +27,12 @@ public class XmlValidationService {
 
     private DocumentBuilderFactory secureFactory() throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", false);
+        setFeatureIfSupported(factory, XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
         setFeatureIfSupported(factory, "http://xml.org/sax/features/external-general-entities", false);
         setFeatureIfSupported(factory, "http://xml.org/sax/features/external-parameter-entities", false);
         setFeatureIfSupported(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
         factory.setNamespaceAware(false);
         return factory;

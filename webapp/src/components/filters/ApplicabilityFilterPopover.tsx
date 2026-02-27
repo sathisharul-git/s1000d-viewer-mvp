@@ -23,6 +23,7 @@ export function ApplicabilityFilterPopover({
   onClose,
 }: ApplicabilityFilterPopoverProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const firstSelectRef = useRef<HTMLSelectElement | null>(null);
   const [draftFilters, setDraftFilters] = useState<ApplicabilityFilters>(filters);
 
   useEffect(() => {
@@ -30,6 +31,9 @@ export function ApplicabilityFilterPopover({
       return;
     }
     setDraftFilters(filters);
+    window.requestAnimationFrame(() => {
+      firstSelectRef.current?.focus();
+    });
   }, [filters, open]);
 
   useEffect(() => {
@@ -92,6 +96,7 @@ export function ApplicabilityFilterPopover({
         <label>
           Aircraft
           <select
+            ref={firstSelectRef}
             value={draftFilters.aircraft}
             onChange={(event) => setDraftFilters((prev) => ({ ...prev, aircraft: event.target.value }))}
           >

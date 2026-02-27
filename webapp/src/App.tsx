@@ -22,6 +22,7 @@ type HotspotsByIcn = Record<string, Hotspot[]>;
 type HotspotStatusByIcn = Record<string, string>;
 
 const layoutStorageKey = "s1000d.viewer.layout.v3";
+const filterStorageKey = "s1000d.viewer.filters.v1";
 const defaultLayoutState: ViewerLayoutState = {
   leftWidth: 320,
   rightWidth: 360,
@@ -74,6 +75,38 @@ function writeLayoutState(next: ViewerLayoutState): void {
     return;
   }
   window.localStorage.setItem(layoutStorageKey, JSON.stringify(next));
+}
+
+function readFilterState(): ApplicabilityFilters {
+  if (typeof window === "undefined") {
+    return defaultApplicabilityFilters;
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(filterStorageKey) ?? "");
+    if (
+      typeof parsed.aircraft === "string" &&
+      typeof parsed.engine === "string" &&
+      typeof parsed.variant === "string"
+    ) {
+      return {
+        aircraft: parsed.aircraft.trim(),
+        engine: parsed.engine.trim(),
+        variant: parsed.variant.trim(),
+      };
+    }
+  } catch {
+    return defaultApplicabilityFilters;
+  }
+
+  return defaultApplicabilityFilters;
+}
+
+function writeFilterState(next: ApplicabilityFilters): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(filterStorageKey, JSON.stringify(next));
 }
 
 function highlightHtml(html: string, term: string): string {
@@ -229,7 +262,7 @@ export function App() {
   const [modules, setModules] = useState<ModuleListItem[]>([]);
   const [pmcs, setPmcs] = useState<PmcListItem[]>([]);
   const [selectedPmcId, setSelectedPmcId] = useState("");
-  const [filters, setFilters] = useState<ApplicabilityFilters>(defaultApplicabilityFilters);
+  const [filters, setFilters] = useState<ApplicabilityFilters>(() => readFilterState());
   const [moduleSearch, setModuleSearch] = useState("");
 
   const [selectedDmId, setSelectedDmId] = useState("");
@@ -266,6 +299,10 @@ export function App() {
   useEffect(() => {
     writeLayoutState(layout);
   }, [layout]);
+
+  useEffect(() => {
+    writeFilterState(filters);
+  }, [filters]);
 
   useEffect(() => {
     if (!notice) {

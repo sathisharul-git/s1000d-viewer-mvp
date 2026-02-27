@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
@@ -44,6 +46,9 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
     private static final Logger LOGGER = LoggerFactory.getLogger(JcgmBackedCgmToSvgConverter.class);
     private static final String CGM_READER_SPI_CLASS = "net.sf.jcgm.imageio.plugins.cgm.CGMImageReaderSpi";
     private static final String CGM_CORE_CLASS = "net.sf.jcgm.core.CGM";
+    private static final Pattern VIEWBOX_PATTERN = Pattern.compile("viewBox\\s*=\\s*\"\\s*[-+]?\\d+(?:\\.\\d+)?\\s+[-+]?\\d+(?:\\.\\d+)?\\s+([-+]?\\d+(?:\\.\\d+)?)\\s+([-+]?\\d+(?:\\.\\d+)?)\\s*\"");
+    private static final int FALLBACK_WIDTH = 1100;
+    private static final int FALLBACK_HEIGHT = 460;
     private static final List<String> DEFAULT_LIB_CANDIDATES = List.of(
         "application/libs/jcgm",
         "libs/jcgm",
@@ -138,7 +143,8 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
             return wrapImageAsSvg(decoded.image().get(), payload, overlays);
         }
 
-        return fallbackConverter.convert(new ByteArrayInputStream(payload), decoded.reason());
+        String fallbackSvg = fallbackConverter.convert(new ByteArrayInputStream(payload), decoded.reason());
+        return attachOverlayToFallbackSvg(fallbackSvg, overlays);
     }
 
     DecodeResult tryDecodeWithJcgm(byte[] payload) {
@@ -356,6 +362,45 @@ public class JcgmBackedCgmToSvgConverter implements CgmToSvgConverter {
         }
         builder.append("</g>");
         return builder.toString();
+    }
+
+    private String attachOverlayToFallbackSvg(String fallbackSvg, OverlayExtraction overlays) {
+        if (fallbackSvg == null || fallbackSvg.isBlank() || overlays.hotspots().isEmpty()) {
+            return fallbackSvg;
+        }
+        int[] size = resolveSvgViewport(fallbackSvg);
+        String overlayLayer = buildOverlayLayer(overlays, size[0], size[1]);
+        if (overlayLayer.isBlank()) {
+            return fallbackSvg;
+        }
+
+        int insertAt = fallbackSvg.lastIndexOf("</svg>");
+        if (insertAt < 0) {
+            return fallbackSvg;
+        }
+        return fallbackSvg.substring(0, insertAt) + overlayLayer + fallbackSvg.substring(insertAt);
+    }
+
+    private int[] resolveSvgViewport(String svg) {
+        Matcher matcher = VIEWBOX_PATTERN.matcher(svg);
+        if (!matcher.find()) {
+            return new int[]{FALLBACK_WIDTH, FALLBACK_HEIGHT};
+        }
+        int width = parsePositiveDimension(matcher.group(1), FALLBACK_WIDTH);
+        int height = parsePositiveDimension(matcher.group(2), FALLBACK_HEIGHT);
+        return new int[]{width, height};
+    }
+
+    private int parsePositiveDimension(String raw, int fallback) {
+        try {
+            double value = Double.parseDouble(raw);
+            if (value > 0.0) {
+                return Math.max(1, (int) Math.round(value));
+            }
+        } catch (NumberFormatException ignored) {
+            // Use fallback.
+        }
+        return fallback;
     }
 
     private String renderOverlayShape(HotspotOverlay hotspot, Bounds bounds, int width, int height) {
