@@ -260,6 +260,7 @@ export function App() {
 
   const [catalog, setCatalog] = useState<ModuleListItem[]>([]);
   const [modules, setModules] = useState<ModuleListItem[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
   const [pmcs, setPmcs] = useState<PmcListItem[]>([]);
   const [selectedPmcId, setSelectedPmcId] = useState("");
   const [filters, setFilters] = useState<ApplicabilityFilters>(() => readFilterState());
@@ -267,10 +268,12 @@ export function App() {
 
   const [selectedDmId, setSelectedDmId] = useState("");
   const [selectedContent, setSelectedContent] = useState<ModuleRenderResponse | null>(null);
+  const [renderLoading, setRenderLoading] = useState(false);
   const [selectedIcnId, setSelectedIcnId] = useState("");
   const [selectedHotspotId, setSelectedHotspotId] = useState("");
 
   const [graphicSvg, setGraphicSvg] = useState("");
+  const [graphicLoading, setGraphicLoading] = useState(false);
   const [hotspotsByIcn, setHotspotsByIcn] = useState<HotspotsByIcn>({});
   const [loadingHotspotsByIcn, setLoadingHotspotsByIcn] = useState<HotspotStatusByIcn>({});
   const [hotspotErrorsByIcn, setHotspotErrorsByIcn] = useState<HotspotStatusByIcn>({});
@@ -437,19 +440,38 @@ export function App() {
     if (!token) {
       return;
     }
+    let cancelled = false;
+    setModulesLoading(true);
     loadModulesForScope(token, filters)
       .then((rows) => {
+        if (cancelled) {
+          return;
+        }
         setModules(rows);
         if (!rows.find((row) => row.dmId === selectedDmId)) {
           const nextDmId = rows[0]?.dmId ?? "";
           setSelectedDmId(nextDmId);
         }
       })
-      .catch((err: unknown) => setError(String(err)));
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setError(String(err));
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setModulesLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [filters, selectedPmcId, token]);
 
   useEffect(() => {
     if (!token || !selectedDmId) {
+      setRenderLoading(false);
       setSelectedContent(null);
       setSelectedIcnId("");
       setSelectedHotspotId("");
@@ -459,8 +481,18 @@ export function App() {
       setHotspotErrorsByIcn({});
       return;
     }
+    if (selectedPmcId) {
+      if (modulesLoading) {
+        return;
+      }
+      const dmInScope = modules.some((row) => row.dmId === selectedDmId);
+      if (!dmInScope) {
+        return;
+      }
+    }
 
     let cancelled = false;
+    setRenderLoading(true);
     (async () => {
       try {
         const content = await api.moduleRender(token, selectedDmId, filters, {
@@ -489,12 +521,17 @@ export function App() {
         setLoadingHotspotsByIcn({});
         setHotspotErrorsByIcn({});
       }
+      finally {
+        if (!cancelled) {
+          setRenderLoading(false);
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [filters, selectedDmId, selectedPmcId, token]);
+  }, [filters, selectedDmId, selectedPmcId, token, modules, modulesLoading]);
 
   useEffect(() => {
     const icnIds = selectedContent?.assets.icns ?? [];
@@ -547,11 +584,13 @@ export function App() {
 
   useEffect(() => {
     if (!token || !selectedIcnId) {
+      setGraphicLoading(false);
       setGraphicSvg("");
       return;
     }
 
     let cancelled = false;
+    setGraphicLoading(true);
     (async () => {
       try {
         const svg = await api.graphic(token, selectedIcnId);
@@ -565,6 +604,11 @@ export function App() {
         }
         setError(String(err));
         setGraphicSvg("");
+      }
+      finally {
+        if (!cancelled) {
+          setGraphicLoading(false);
+        }
       }
     })();
 
@@ -944,6 +988,8 @@ export function App() {
   const isAdmin = hasRole(roles, "ROLE_ADMIN");
   const selectedDmLabel = selectedContent?.meta.title || selectedDmId || "No module selected";
   const selectedHotspotKey = normalizeHotspotId(selectedHotspotId);
+  const moduleSummaryText =
+    filteredModules.length === modules.length ? `${modules.length} modules` : `${filteredModules.length} of ${modules.length} modules`;
 
   return (
     <div className="app-shell">
@@ -1051,39 +1097,57 @@ export function App() {
           <aside className="panel">
             <div className="panel-title">Data Modules</div>
             <div className="left-module-controls">
-              <input
-                className="module-search"
-                value={moduleSearch}
-                onChange={(event) => setModuleSearch(event.target.value)}
-                placeholder="Filter module names"
-              />
+              <div className="module-search-row">
+                <input
+                  className="module-search"
+                  value={moduleSearch}
+                  onChange={(event) => setModuleSearch(event.target.value)}
+                  placeholder="Filter module names"
+                />
+                {moduleSearch ? (
+                  <button type="button" className="inline-clear-btn" onClick={() => setModuleSearch("")}>
+                    Clear
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             <div className="module-list names-only">
-              {filteredModules.map((module) => (
-                <button
-                  key={module.dmId}
-                  type="button"
-                  className={module.dmId === selectedDmId ? "module-row active" : "module-row"}
-                  onClick={() => setSelectedDmId(module.dmId)}
-                  title={module.title}
-                >
-                  {module.dmId}
-                </button>
-              ))}
+              {modulesLoading ? <div className="list-state">Loading modules...</div> : null}
+              {!modulesLoading && filteredModules.length === 0 ? <div className="list-state">No matching modules.</div> : null}
+              {!modulesLoading
+                ? filteredModules.map((module) => (
+                    <button
+                      key={module.dmId}
+                      type="button"
+                      className={module.dmId === selectedDmId ? "module-row active" : "module-row"}
+                      onClick={() => setSelectedDmId(module.dmId)}
+                      title={module.title}
+                    >
+                      {module.dmId}
+                    </button>
+                  ))
+                : null}
             </div>
-            <div className="module-footnote">{filteredModules.length} modules</div>
+            <div className="module-footnote">{moduleSummaryText}</div>
           </aside>
         }
         center={
           <main className="panel">
             <div className="panel-title">Preview</div>
-            <input
-              className="search"
-              placeholder="Search and highlight text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
+            <div className="search-row">
+              <input
+                className="search"
+                placeholder="Search and highlight text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+              {searchTerm ? (
+                <button type="button" className="inline-clear-btn" onClick={() => setSearchTerm("")}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
             {selectedContent ? (
               <div className="preview-meta">
                 <span className="meta-chip">Source: {selectedContent.source}</span>
@@ -1152,6 +1216,7 @@ export function App() {
               </div>
             ) : null}
 
+            {renderLoading ? <div className="preview-loading">Rendering selected module...</div> : null}
             <div className="preview dm-rendered" onClick={handlePreviewClick} dangerouslySetInnerHTML={{ __html: highlighted }} />
           </main>
         }
@@ -1183,16 +1248,18 @@ export function App() {
                   <div className="graphics-empty">Select a graphic in Preview to enable this panel.</div>
                 ) : (
                   <div className="graphic-wrap">
-                    {graphicSvg ? (
+                    {graphicLoading ? <div className="graphics-loading">Loading graphic...</div> : null}
+                    {!graphicLoading && graphicSvg ? (
                       <div
                         ref={graphicSvgRef}
                         className="graphic-svg"
                         onClick={handleSvgClick}
                         dangerouslySetInnerHTML={{ __html: graphicSvg }}
                       />
-                    ) : (
+                    ) : null}
+                    {!graphicLoading && !graphicSvg ? (
                       <p>No image available.</p>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </>

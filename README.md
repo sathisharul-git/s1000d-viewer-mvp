@@ -48,6 +48,80 @@ This repository contains an S1000D viewer with Oracle-backed CSDB metadata, vaul
 Backend: `http://localhost:8080`  
 Webapp: `http://localhost:5173`
 
+## One-command startup (deployed)
+After building backend jar and webapp static files, you can run the app stack with one shell command via a wrapper script.
+
+### Linux (`start-prod.sh`)
+```bash
+#!/usr/bin/env bash
+set -e
+
+docker compose up -d
+mkdir -p logs
+
+nohup java -jar application/build/libs/application-*.jar > logs/backend.log 2>&1 &
+nohup npx serve -s webapp/dist -l 5173 > logs/webapp.log 2>&1 &
+```
+
+Run:
+```bash
+./start-prod.sh
+```
+
+### Windows (`start-prod.ps1`)
+```powershell
+docker compose up -d
+New-Item -ItemType Directory -Force logs | Out-Null
+
+Start-Process java -ArgumentList '-jar','application/build/libs/application-0.1.0.jar' `
+  -RedirectStandardOutput 'logs/backend.log' -RedirectStandardError 'logs/backend.err.log'
+Start-Process npx -ArgumentList 'serve','-s','webapp/dist','-l','5173' `
+  -RedirectStandardOutput 'logs/webapp.log' -RedirectStandardError 'logs/webapp.err.log'
+```
+
+Run:
+```powershell
+.\start-prod.ps1
+```
+
+## Deployment package (any platform)
+This repo now includes a portable deployment setup under `deploy/`:
+
+- `deploy/docker/backend.Dockerfile`
+- `deploy/docker/webapp.Dockerfile`
+- `deploy/docker/nginx.conf`
+- `deploy/docker-compose.deploy.yml`
+- `deploy/.env.example`
+- `deploy/package-deploy.sh`
+- `deploy/package-deploy.ps1`
+
+### A) Containerized deployment (recommended)
+From repository root:
+
+```bash
+cp deploy/.env.example deploy/.env
+docker compose --env-file deploy/.env -f deploy/docker-compose.deploy.yml up -d --build
+```
+
+Open:
+- Webapp: `http://localhost:5173`
+- Backend health: `http://localhost:8080/api/health`
+
+### B) Build a portable deploy bundle
+Linux/macOS:
+```bash
+./deploy/package-deploy.sh
+```
+
+Windows:
+```powershell
+.\deploy\package-deploy.ps1
+```
+
+Output:
+- Folder: `deploy/package/s1000d-viewer`
+- Archive: `deploy/package/s1000d-viewer-deploy.tar.gz` (Linux) or `.zip` (Windows)
+
 ## Importing ZIP datasets
 - Login as `ADMIN` or `ENGINEER`.
 - Open `Upload Module`.

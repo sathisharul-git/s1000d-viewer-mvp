@@ -72,6 +72,11 @@ button:hover {
   transform: translateY(-1px);
 }
 
+button:focus-visible {
+  outline: 2px solid #0b5f58;
+  outline-offset: 1px;
+}
+
 button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
@@ -458,6 +463,20 @@ button:disabled {
   height: 2rem;
 }
 
+.module-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.38rem;
+  align-items: center;
+}
+
+.inline-clear-btn {
+  padding: 0.28rem 0.56rem;
+  font-size: 0.74rem;
+  border-radius: 0.46rem;
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+}
+
 .module-list {
   display: grid;
   gap: 0.2rem;
@@ -501,8 +520,25 @@ button:disabled {
   color: #245963;
 }
 
+.list-state {
+  border: 1px dashed #cbdae7;
+  border-radius: 0.5rem;
+  background: #f8fbff;
+  color: #475569;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.55rem;
+}
+
 .search {
   width: 100%;
+  margin-bottom: 0;
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.38rem;
+  align-items: center;
   margin-bottom: 0.55rem;
 }
 
@@ -658,6 +694,17 @@ button:disabled {
   min-height: 0;
   overflow: auto;
   line-height: 1.55;
+}
+
+.preview-loading,
+.graphics-loading {
+  border: 1px dashed #bfd3e6;
+  border-radius: 0.6rem;
+  background: #f8fbff;
+  color: #475569;
+  font-size: 0.83rem;
+  padding: 0.46rem 0.58rem;
+  margin-bottom: 0.45rem;
 }
 
 .right-panel {

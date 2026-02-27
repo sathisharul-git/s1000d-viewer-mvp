@@ -1,0 +1,75 @@
+services:
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    ports:
+      - "${ORACLE_PORT:-1521}:1521"
+    environment:
+      ORACLE_PASSWORD: "${ORACLE_PASSWORD:-Oradoc_db1}"
+      APP_USER: "${S1000D_DB_USER:-s1000d_app}"
+      APP_USER_PASSWORD: "${S1000D_DB_PASS:-s1000d_secret}"
+    volumes:
+      - s1000d_oracle_data:/opt/oracle/oradata
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    ports:
+      - "${LDAP_PORT:-389}:389"
+    environment:
+      LDAP_ORGANISATION: "S1000D Org"
+      LDAP_DOMAIN: "s1000d.org"
+      LDAP_ADMIN_PASSWORD: "${S1000D_LDAP_MANAGER_PASS:-admin}"
+      LDAP_TLS: "false"
+    volumes:
+      - s1000d_ldap_data:/var/lib/ldap
+      - s1000d_ldap_config:/etc/ldap/slapd.d
+
+  opa:
+    image: openpolicyagent/opa:0.68.0-static
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    volumes:
+      - ../application/src/main/resources/opa:/policies:ro
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/docker/backend.Dockerfile
+    depends_on:
+      - oracle
+      - openldap
+      - opa
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      S1000D_DB_URL: "${S1000D_DB_URL:-jdbc:oracle:thin:@oracle:1521/XEPDB1}"
+      S1000D_DB_USER: "${S1000D_DB_USER:-s1000d_app}"
+      S1000D_DB_PASS: "${S1000D_DB_PASS:-s1000d_secret}"
+      S1000D_LDAP_URL: "${S1000D_LDAP_URL:-ldap://openldap:389}"
+      S1000D_LDAP_BASE_DN: "${S1000D_LDAP_BASE_DN:-dc=s1000d,dc=org}"
+      S1000D_LDAP_MANAGER_DN: "${S1000D_LDAP_MANAGER_DN:-cn=admin,dc=s1000d,dc=org}"
+      S1000D_LDAP_MANAGER_PASS: "${S1000D_LDAP_MANAGER_PASS:-admin}"
+      S1000D_OPA_URL: "${S1000D_OPA_URL:-http://opa:8181}"
+      VIEWER_CORS_ORIGIN_1: "${VIEWER_CORS_ORIGIN_1:-http://localhost:5173}"
+      VIEWER_CORS_ORIGIN_2: "${VIEWER_CORS_ORIGIN_2:-http://127.0.0.1:5173}"
+      VIEWER_SECURITY_JWT_SECRET: "${VIEWER_SECURITY_JWT_SECRET:-dev-local-jwt-secret-change-in-production}"
+      S1000D_CSDB_ROOT: "${S1000D_CSDB_ROOT:-/runtime/data/csdb}"
+      S1000D_PUBLISHED_ROOT: "${S1000D_PUBLISHED_ROOT:-/runtime/data/published}"
+      S1000D_CACHE_ROOT: "${S1000D_CACHE_ROOT:-/runtime/data/cache}"
+      S1000D_AUDIT_ROOT: "${S1000D_AUDIT_ROOT:-/runtime/data/audit}"
+    volumes:
+      - ../data:/runtime/data
+
+  webapp:
+    build:
+      context: ..
+      dockerfile: deploy/docker/webapp.Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "${WEBAPP_PORT:-5173}:80"
+
+volumes:
+  s1000d_oracle_data:
+  s1000d_ldap_data:
+  s1000d_ldap_config:
