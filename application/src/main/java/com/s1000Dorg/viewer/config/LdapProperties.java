@@ -11,7 +11,7 @@ public class LdapProperties {
     private String managerPassword = "";
     private String userDnPattern = "uid={0},ou=people";
     private String groupSearchBase = "ou=groups";
-    private String groupSearchFilter = "(member=uid={0},ou=people,dc=s1000d,dc=org)";
+    private String groupSearchFilter = "(member={0})";
 
     public String getUrl() {
         return url;

@@ -1,10 +1,3 @@
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        mavenCentral()
-    }
-}
-
-rootProject.name = 's1000d-viewer'
-
-include 'application', 'webapp'
+rootProject.name = 's1000d-viewer-mvp'
+include 'application'
+// webapp is managed via npm as per README

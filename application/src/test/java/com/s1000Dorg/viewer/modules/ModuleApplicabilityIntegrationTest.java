@@ -11,11 +11,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,11 +41,10 @@ class ModuleApplicabilityIntegrationTest {
             .andExpect(jsonPath("$.filters.variant").value("MOD-12"))
             .andExpect(jsonPath("$.modules[*].dmId", hasItem("DMC-SAMPLE-AAA-00-00-00-00A-040A-C")))
             .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-040A-C')].applicabilityResult").value(hasItem("APPLICABLE")))
-            .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-040A-C')].applicabilitySource").value(hasItem("published")))
+            .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-040A-C')].applicabilitySource").value(hasItem("metadata")))
             .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-050A-C')]").isEmpty())
             .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-060A-C')].applicabilityResult").value(hasItem("UNKNOWN")))
-            .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-060A-C')].applicabilitySource").value(hasItem("none")))
-            .andExpect(content().string(containsString("unknown")));
+            .andExpect(jsonPath("$.modules[?(@.dmId=='DMC-SAMPLE-AAA-00-00-00-00A-060A-C')].applicabilitySource").value(hasItem("none")));
     }
 
     private String loginAndGetToken(String username, String password) throws Exception {

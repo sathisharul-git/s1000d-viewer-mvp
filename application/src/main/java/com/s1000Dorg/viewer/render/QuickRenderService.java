@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,9 +24,14 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
 
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
+import com.s1000Dorg.viewer.applicability.ApplicabilityContext;
+import com.s1000Dorg.viewer.applicability.InlineApplicabilityFilterResult;
+import com.s1000Dorg.viewer.applicability.InlineApplicabilityFilterService;
 import com.s1000Dorg.viewer.modules.XmlValidationService;
 import com.s1000Dorg.viewer.storage.VaultService;
 
@@ -38,14 +44,26 @@ public class QuickRenderService {
     private final VaultService vaultService;
     private final RenderCache renderCache;
     private final XmlValidationService xmlValidationService;
+    private final InlineApplicabilityFilterService inlineApplicabilityFilterService;
 
-    public QuickRenderService(VaultService vaultService, RenderCache renderCache, XmlValidationService xmlValidationService) {
+    public QuickRenderService(
+        VaultService vaultService,
+        RenderCache renderCache,
+        XmlValidationService xmlValidationService,
+        InlineApplicabilityFilterService inlineApplicabilityFilterService
+    ) {
         this.vaultService = vaultService;
         this.renderCache = renderCache;
         this.xmlValidationService = xmlValidationService;
+        this.inlineApplicabilityFilterService = inlineApplicabilityFilterService;
     }
 
-    public RenderedDm render(String dmId, DataModuleDescriptor descriptor, ApplicabilityResult applicabilityResult) {
+    public RenderedDm render(
+        String dmId,
+        DataModuleDescriptor descriptor,
+        ApplicabilityResult applicabilityResult,
+        ApplicabilityContext context
+    ) {
         String xml;
         try {
             Path xmlPath = vaultService.resolveDmFile(dmId);
@@ -55,18 +73,20 @@ public class QuickRenderService {
         }
 
         xmlValidationService.validateWellFormed(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+        InlineApplicabilityFilterResult inlineFilterResult = inlineApplicabilityFilterService.apply(xml, context);
+        String filteredXml = inlineFilterResult.xml();
 
-        String cacheKey = cacheKey(dmId, xml);
+        String cacheKey = cacheKey(dmId, filteredXml, context);
         var cached = renderCache.get(cacheKey);
         if (cached.isPresent()) {
-            return withApplicability(cached.get(), descriptor, applicabilityResult);
+            return withApplicability(cached.get(), descriptor, applicabilityResult, inlineFilterResult);
         }
 
-        String html = transform(xml);
-        List<String> icns = extract(ICN_PATTERN, xml.toUpperCase());
-        List<String> dmRefs = extract(DM_REF_PATTERN, xml.toUpperCase());
+        String html = transform(filteredXml);
+        List<String> icns = extract(ICN_PATTERN, filteredXml.toUpperCase());
+        List<String> dmRefs = extract(DM_REF_PATTERN, filteredXml.toUpperCase());
 
-        String title = extractTitle(xml, descriptor.title());
+        String title = extractTitle(filteredXml, descriptor.title());
         RenderedDm rendered = new RenderedDm(
             dmId,
             "quick",
@@ -75,7 +95,12 @@ public class QuickRenderService {
             descriptor.applicability(),
             applicabilityResult,
             icns,
-            dmRefs
+            dmRefs,
+            new InlineApplicabilitySummary(
+                inlineFilterResult.mode(),
+                inlineFilterResult.removedCount(),
+                inlineFilterResult.keptCount()
+            )
         );
         renderCache.put(cacheKey, rendered);
         return rendered;
@@ -87,7 +112,12 @@ public class QuickRenderService {
      * @param result
      * @return
      */
-    private RenderedDm withApplicability(RenderedDm cached, DataModuleDescriptor descriptor, ApplicabilityResult result) {
+    private RenderedDm withApplicability(
+        RenderedDm cached,
+        DataModuleDescriptor descriptor,
+        ApplicabilityResult result,
+        InlineApplicabilityFilterResult inlineFilterResult
+    ) {
         return new RenderedDm(
             cached.dmId(),
             cached.source(),
@@ -96,7 +126,12 @@ public class QuickRenderService {
             descriptor.applicability(),
             result,
             cached.icns(),
-            cached.dmRefs()
+            cached.dmRefs(),
+            new InlineApplicabilitySummary(
+                inlineFilterResult.mode(),
+                inlineFilterResult.removedCount(),
+                inlineFilterResult.keptCount()
+            )
         );
     }
     private String transform(String xml) {
@@ -104,7 +139,7 @@ public class QuickRenderService {
             TransformerFactory factory = transformerFactory();
             Source xslt = new StreamSource(new ClassPathResource("xslt/s1000d-dm-to-html.xsl").getInputStream());
             Transformer transformer = factory.newTransformer(xslt);
-            Source xmlSource = new StreamSource(new StringReader(xml));
+            Source xmlSource = new StreamSource(new StringReader(sanitizeXml(xml)));
             java.io.StringWriter out = new java.io.StringWriter();
             transformer.transform(xmlSource, new StreamResult(out));
             return out.toString();
@@ -126,7 +161,24 @@ public class QuickRenderService {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(false);
             factory.setExpandEntityReferences(false);
-            Document document = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
+            var builder = factory.newDocumentBuilder();
+            builder.setErrorHandler(new DefaultHandler() {
+                @Override
+                public void warning(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+
+                @Override
+                public void error(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+
+                @Override
+                public void fatalError(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+            });
+            Document document = builder.parse(new InputSource(new StringReader(sanitizeXml(xml))));
             String techName = firstText(document, "techName");
             String infoName = firstText(document, "infoName");
             if (!techName.isBlank() && !infoName.isBlank()) {
@@ -165,14 +217,35 @@ public class QuickRenderService {
         return values;
     }
 
-    private String cacheKey(String dmId, String xml) {
+    private String cacheKey(String dmId, String xml, ApplicabilityContext context) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(xml.getBytes(StandardCharsets.UTF_8));
+            StringBuilder signature = new StringBuilder(xml).append('|');
+            if (context != null) {
+                signature.append(context.aircraft()).append('|')
+                    .append(context.engine()).append('|')
+                    .append(context.variant()).append('|');
+                for (Map.Entry<String, String> entry : context.allProductAttributes().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .toList()) {
+                    signature.append(entry.getKey()).append('=').append(entry.getValue()).append(';');
+                }
+            }
+            byte[] hash = digest.digest(signature.toString().getBytes(StandardCharsets.UTF_8));
             return dmId + "_" + HexFormat.of().formatHex(hash);
         } catch (Exception ex) {
-            return dmId + "_" + Integer.toHexString(xml.hashCode());
+            return dmId + "_" + Integer.toHexString((xml + "_" + context).hashCode());
         }
+    }
+
+    private String sanitizeXml(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        if (raw.charAt(0) == '\uFEFF') {
+            return raw.substring(1);
+        }
+        return raw;
     }
 }
 

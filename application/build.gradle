@@ -9,14 +9,8 @@ version = '0.1.0'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(17)
     }
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 17
 }
 
 dependencies {
@@ -41,14 +35,63 @@ dependencies {
 }
 
 tasks.withType(Test).configureEach {
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
     useJUnitPlatform()
+    testLogging {
+        showStandardStreams = true
+    }
 }
 
-tasks.named('bootRun') {
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
+tasks.register('stopServer') {
+    group = 'application'
+    description = 'Stops the backend process listening on port 8080 (override with -PserverPort=<port>).'
+
+    doLast {
+        String port = (project.findProperty('serverPort') ?: '8080').toString()
+        boolean isWindows = System.getProperty('os.name').toLowerCase().contains('win')
+        List<String> pids = []
+
+        if (isWindows) {
+            Process discover = new ProcessBuilder(
+                'powershell',
+                '-NoProfile',
+                '-Command',
+                "Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique"
+            )
+                .redirectErrorStream(true)
+                .start()
+            String output = discover.inputStream.getText('UTF-8')
+            discover.waitFor()
+            pids = output.readLines()
+                .collect { it.trim() }
+                .findAll { it ==~ /\d+/ }
+        } else {
+            Process discover = new ProcessBuilder('sh', '-c', "lsof -ti tcp:${port} || true")
+                .redirectErrorStream(true)
+                .start()
+            String output = discover.inputStream.getText('UTF-8')
+            discover.waitFor()
+            pids = output.readLines()
+                .collect { it.trim() }
+                .findAll { it ==~ /\d+/ }
+        }
+
+        List<String> uniquePids = pids.unique()
+        if (uniquePids.isEmpty()) {
+            println "No server process is listening on port ${port}."
+            return
+        }
+
+        uniquePids.each { pid ->
+            Process killProc = isWindows
+                ? new ProcessBuilder('taskkill', '/PID', pid, '/F').redirectErrorStream(true).start()
+                : new ProcessBuilder('kill', '-9', pid).redirectErrorStream(true).start()
+            String killOutput = killProc.inputStream.getText('UTF-8').trim()
+            killProc.waitFor()
+            if (!killOutput.isBlank()) {
+                println killOutput
+            }
+        }
+
+        println "Stopped process(es) on port ${port}: ${uniquePids.join(', ')}"
     }
 }

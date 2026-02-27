@@ -13,6 +13,8 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
 
 public class ApplicabilityXmlParser {
 
@@ -23,39 +25,51 @@ public class ApplicabilityXmlParser {
         String xml = HtmlUtils.htmlUnescape(escapedXml);
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(false);
             DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new InputSource(new StringReader(xml)));
+            builder.setErrorHandler(new DefaultHandler() {
+                @Override
+                public void warning(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+
+                @Override
+                public void error(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+
+                @Override
+                public void fatalError(SAXParseException e) throws SAXParseException {
+                    throw e;
+                }
+            });
+            Document doc = builder.parse(new InputSource(new StringReader(sanitizeXml(xml))));
             Element root = doc.getDocumentElement();
             if (!"applic".equalsIgnoreCase(root.getTagName())) {
                 throw new ApplicabilityXmlParseException("Root element must be <applic>");
             }
-            // The <applic> element should contain a single <evaluate> or <assert> element.
-            // But the user's example shows it containing <evaluate>. I'll assume it contains one child that is the start of the expression.
-            NodeList childNodes = root.getChildNodes();
-            Element expressionRoot = null;
-            for (int i = 0; i < childNodes.getLength(); i++) {
-                if (childNodes.item(i).getNodeType() == Node.ELEMENT_NODE) {
-                    expressionRoot = (Element) childNodes.item(i);
-                    break;
-                }
-            }
-
+            Element expressionRoot = findExpressionRoot(root);
             if (expressionRoot == null) {
-                // This could be a valid case for an empty applicability, treat as no expression
                 return null;
             }
-
             if ("evaluate".equalsIgnoreCase(expressionRoot.getTagName())) {
                 return parseEvaluate(expressionRoot);
-            } else if ("assert".equalsIgnoreCase(expressionRoot.getTagName())) {
-                return parseAssert(expressionRoot);
-            } else {
-                throw new ApplicabilityXmlParseException("Unsupported root expression element: " + expressionRoot.getTagName());
             }
+            return parseAssert(expressionRoot);
 
         } catch (Exception e) {
             throw new ApplicabilityXmlParseException("Failed to parse applicability XML", e);
         }
+    }
+
+    private String sanitizeXml(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        if (raw.charAt(0) == '\uFEFF') {
+            return raw.substring(1);
+        }
+        return raw;
     }
 
     private ApplicXmlExpression.Evaluate parseEvaluate(Element evaluateElement) throws ApplicabilityXmlParseException {
@@ -74,7 +88,7 @@ public class ApplicabilityXmlParser {
                 } else if ("evaluate".equalsIgnoreCase(childElement.getTagName())) {
                     expressions.add(parseEvaluate(childElement));
                 } else {
-                     throw new ApplicabilityXmlParseException("Unsupported element inside <evaluate>: " + childElement.getTagName());
+                    throw new ApplicabilityXmlParseException("Unsupported element inside <evaluate>: " + childElement.getTagName());
                 }
             }
         }
@@ -85,5 +99,23 @@ public class ApplicabilityXmlParser {
         String ident = assertElement.getAttribute("applicPropertyIdent");
         String values = assertElement.getAttribute("applicPropertyValues");
         return new ApplicXmlExpression.Assert(ident, values);
+    }
+
+    private Element findExpressionRoot(Element applicRoot) throws ApplicabilityXmlParseException {
+        NodeList childNodes = applicRoot.getChildNodes();
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            if (childNodes.item(i).getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            Element candidate = (Element) childNodes.item(i);
+            if ("displayText".equalsIgnoreCase(candidate.getTagName())) {
+                continue;
+            }
+            if ("evaluate".equalsIgnoreCase(candidate.getTagName()) || "assert".equalsIgnoreCase(candidate.getTagName())) {
+                return candidate;
+            }
+            throw new ApplicabilityXmlParseException("Unsupported root expression element: " + candidate.getTagName());
+        }
+        return null;
     }
 }

@@ -43,7 +43,11 @@ class CgmHotspotOverlayTest {
         ));
 
         List<String> firstIds = extractHotspotIds(svgFirst);
+        firstIds.sort(String::compareTo);
         List<String> secondIds = extractHotspotIds(svgSecond);
+        secondIds.sort(String::compareTo);
+        System.out.println("firstIds: " + firstIds);
+        System.out.println("secondIds: " + secondIds);
         assertFalse(firstIds.isEmpty(), "Expected at least one hotspot id in overlay output.");
         assertEquals(firstIds, secondIds, "Hotspot IDs must remain stable across repeated conversions.");
     }

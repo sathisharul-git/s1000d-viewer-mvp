@@ -6,6 +6,8 @@ import com.s1000Dorg.viewer.applicability.ApplicabilityDecision;
 import com.s1000Dorg.viewer.applicability.ApplicabilityInfo;
 import com.s1000Dorg.viewer.applicability.ApplicabilityRuleEngine;
 import com.s1000Dorg.viewer.applicability.ApplicabilityService;
+import com.s1000Dorg.viewer.applicability.DmApplicabilityEvaluation;
+import com.s1000Dorg.viewer.applicability.DmApplicabilityEvaluator;
 import com.s1000Dorg.viewer.applicability.eval.ApplicabilityEvaluator;
 import com.s1000Dorg.viewer.config.ApplicabilityProperties;
 import com.s1000Dorg.viewer.config.PolicyProperties;
@@ -13,17 +15,21 @@ import com.s1000Dorg.viewer.csdb.index.CsdbIndexer;
 import com.s1000Dorg.viewer.csdb.persistence.entity.DmEntity;
 import com.s1000Dorg.viewer.csdb.persistence.repository.DmIcnRepository;
 import com.s1000Dorg.viewer.csdb.persistence.repository.DmRepository;
+import com.s1000Dorg.viewer.csdb.persistence.repository.PmcDmRepository;
 import com.s1000Dorg.viewer.domain.Applicability;
 import com.s1000Dorg.viewer.domain.ApplicabilityResult;
 import com.s1000Dorg.viewer.domain.DataModuleDescriptor;
+import com.s1000Dorg.viewer.render.InlineApplicabilitySummary;
 import com.s1000Dorg.viewer.render.RenderFacade;
 import com.s1000Dorg.viewer.render.RenderedDm;
 import com.s1000Dorg.viewer.storage.VaultService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -32,6 +38,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,6 +49,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ModuleService {
 
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9._-]+$");
+    private static final List<String> SUPPORTED_GRAPHIC_EXTENSIONS = List.of(".CGM", ".SVG", ".PNG", ".JPG", ".JPEG", ".GIF");
 
     private final FsDataRepository repository;
     private final ApplicabilityService applicabilityService;
@@ -53,8 +62,10 @@ public class ModuleService {
     private final ObjectMapper objectMapper;
     private final DmRepository dmRepository;
     private final DmIcnRepository dmIcnRepository;
+    private final PmcDmRepository pmcDmRepository;
     private final VaultService vaultService;
     private final CsdbIndexer csdbIndexer;
+    private final DmApplicabilityEvaluator dmApplicabilityEvaluator;
 
     public ModuleService(
         FsDataRepository repository,
@@ -68,8 +79,10 @@ public class ModuleService {
         ObjectMapper objectMapper,
         DmRepository dmRepository,
         DmIcnRepository dmIcnRepository,
+        PmcDmRepository pmcDmRepository,
         VaultService vaultService,
-        CsdbIndexer csdbIndexer
+        CsdbIndexer csdbIndexer,
+        DmApplicabilityEvaluator dmApplicabilityEvaluator
     ) {
         this.repository = repository;
         this.applicabilityService = applicabilityService;
@@ -82,28 +95,33 @@ public class ModuleService {
         this.objectMapper = objectMapper;
         this.dmRepository = dmRepository;
         this.dmIcnRepository = dmIcnRepository;
+        this.pmcDmRepository = pmcDmRepository;
         this.vaultService = vaultService;
         this.csdbIndexer = csdbIndexer;
+        this.dmApplicabilityEvaluator = dmApplicabilityEvaluator;
     }
 
     public ModuleListResponse listModules(String aircraft, String engine, String variant) {
-        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine, variant);
+        return listModules(ApplicabilityContext.of(aircraft, engine, variant));
+    }
 
+    public ModuleListResponse listModules(ApplicabilityContext context) {
         List<ModuleListItemResponse> modules = new ArrayList<>();
         for (DataModuleDescriptor descriptor : resolveDescriptors()) {
-            ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
+            ModuleEvaluationRow row = toEvaluationRow(descriptor, context);
+            ApplicabilityDecision decision = ApplicabilityDecision.of(row.dmApplicabilityStatus(), row.dmApplicabilityReason());
             if (!applicabilityService.includeInModuleList(decision)) {
                 continue;
             }
             modules.add(new ModuleListItemResponse(
-                descriptor.dmId(),
-                descriptor.title(),
-                toApplicabilityResponse(descriptor.applicability()),
-                descriptor.source(),
-                descriptor.hasPublishedPreview(),
-                decision.result(),
-                decision.reason(),
-                descriptor.applicabilitySource()
+                row.dmId(),
+                row.displayName(),
+                toApplicabilityResponse(row.applicability()),
+                row.source(),
+                row.hasPublishedPreview(),
+                row.dmApplicabilityStatus(),
+                row.dmApplicabilityReason(),
+                row.dmApplicabilitySource()
             ));
         }
 
@@ -112,8 +130,12 @@ public class ModuleService {
     }
 
     public ModuleRenderResponse renderModule(String dmId, String aircraft, String engine, String variant) {
+        return renderModule(dmId, null, ApplicabilityContext.of(aircraft, engine, variant));
+    }
+
+    public ModuleRenderResponse renderModule(String dmId, String pmcId, ApplicabilityContext context) {
         validateDmId(dmId);
-        ApplicabilityContext context = ApplicabilityContext.of(aircraft, engine, variant);
+        validatePmcScopeIfPresent(dmId, pmcId);
 
         DataModuleDescriptor descriptor = resolveDescriptor(dmId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not found"));
@@ -125,8 +147,8 @@ public class ModuleService {
             }
         }
 
-        ApplicabilityDecision decision = applicabilityService.evaluate(descriptor.applicability(), context);
-        ApplicabilityResult applicabilityResult = decision.result();
+        DmApplicabilityEvaluation dmApplicability = evaluateDmApplicability(descriptor, context);
+        ApplicabilityResult applicabilityResult = dmApplicability.status();
         if (policyProperties.getEnforcement().isEnabled()) {
             ApplicabilityResult policyResult = applicabilityRuleEngine.evaluateRules(dmId, context);
             if (policyResult == ApplicabilityResult.NOT_APPLICABLE) {
@@ -137,18 +159,32 @@ public class ModuleService {
             // TODO: section-level applicability expression comes from parsed DM nodes.
             applicabilityEvaluator.isApplicable("fragment-evaluation-placeholder", context);
         }
-        RenderedDm rendered = renderFacade.render(descriptor, applicabilityResult);
+        RenderedDm rendered = renderFacade.render(descriptor, applicabilityResult, context);
+        InlineApplicabilitySummary inlineSummary = rendered.inlineApplicability() == null
+            ? InlineApplicabilitySummary.none()
+            : rendered.inlineApplicability();
 
         return new ModuleRenderResponse(
             rendered.dmId(),
             rendered.source(),
             rendered.html(),
+            new ModuleApplicabilitySummaryResponse(
+                dmApplicability.status(),
+                dmApplicability.displayText(),
+                dmApplicability.reason(),
+                dmApplicability.source()
+            ),
+            new InlineApplicabilityResponse(
+                inlineSummary.mode(),
+                inlineSummary.removedCount(),
+                inlineSummary.keptCount()
+            ),
             new ModuleRenderMetaResponse(
                 rendered.title(),
                 toApplicabilityResponse(rendered.applicability()),
-                rendered.applicabilityResult(),
-                decision.reason(),
-                descriptor.applicabilitySource()
+                applicabilityResult,
+                dmApplicability.reason(),
+                dmApplicability.source()
             ),
             new ModuleAssetsResponse(rendered.icns()),
             new ModuleLinksResponse(rendered.dmRefs())
@@ -212,6 +248,70 @@ public class ModuleService {
         }
     }
 
+    public ModuleZipImportResponse importZip(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ZIP file is required");
+        }
+        String original = Optional.ofNullable(file.getOriginalFilename()).orElse("dataset.zip");
+        if (!original.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only .zip archives are supported");
+        }
+
+        try {
+            repository.ensureWritableDataDirs();
+            Files.createDirectories(repository.csdbIcnDir());
+            Files.createDirectories(repository.csdbRoot());
+
+            int importedDmCount = 0;
+            int importedPmcCount = 0;
+            int importedIcnCount = 0;
+            int skippedCount = 0;
+
+            try (InputStream input = file.getInputStream(); ZipInputStream zip = new ZipInputStream(input)) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (entry.isDirectory()) {
+                        zip.closeEntry();
+                        continue;
+                    }
+
+                    String fileName = entryFileName(entry);
+                    if (fileName.isBlank()) {
+                        skippedCount++;
+                        zip.closeEntry();
+                        continue;
+                    }
+
+                    String upper = fileName.toUpperCase(Locale.ROOT);
+                    Path destination;
+                    if (upper.startsWith("DMC-") && upper.endsWith(".XML")) {
+                        destination = repository.csdbDmDir().resolve(fileName);
+                        Files.copy(zip, destination, StandardCopyOption.REPLACE_EXISTING);
+                        importedDmCount++;
+                    } else if (upper.startsWith("PMC-") && upper.endsWith(".XML")) {
+                        destination = repository.csdbRoot().resolve(fileName);
+                        Files.copy(zip, destination, StandardCopyOption.REPLACE_EXISTING);
+                        importedPmcCount++;
+                    } else if (upper.startsWith("ICN-") && hasSupportedGraphicExtension(upper)) {
+                        destination = repository.csdbIcnDir().resolve(fileName);
+                        Files.copy(zip, destination, StandardCopyOption.REPLACE_EXISTING);
+                        importedIcnCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                    zip.closeEntry();
+                }
+            }
+
+            csdbIndexer.indexAll();
+            String message = "ZIP import complete: DMs=%d, PMCs=%d, ICNs=%d, skipped=%d"
+                .formatted(importedDmCount, importedPmcCount, importedIcnCount, skippedCount);
+            return new ModuleZipImportResponse(importedDmCount, importedPmcCount, importedIcnCount, skippedCount, message);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Failed to import ZIP dataset", ex);
+        }
+    }
+
     private List<DataModuleDescriptor> resolveDescriptors() {
         return dmRepository.findAll().stream()
             .map(this::buildDescriptor)
@@ -220,7 +320,16 @@ public class ModuleService {
     }
 
     private Optional<DataModuleDescriptor> resolveDescriptor(String dmId) {
-        return dmRepository.findByDmIdIgnoreCase(dmId).map(this::buildDescriptor);
+        Optional<DmEntity> exact = dmRepository.findByDmIdIgnoreCase(dmId);
+        if (exact.isPresent()) {
+            return exact.map(this::buildDescriptor);
+        }
+
+        String canonical = canonicalDmId(dmId);
+        return dmRepository.findAll().stream()
+            .filter(entity -> canonicalDmId(entity.getDmId()).equalsIgnoreCase(canonical))
+            .findFirst()
+            .map(this::buildDescriptor);
     }
 
     private DataModuleDescriptor buildDescriptor(DmEntity dmEntity) {
@@ -252,8 +361,80 @@ public class ModuleService {
             applicabilitySource,
             source,
             hasPublished,
-            primaryIcn
+            primaryIcn,
+            nullToEmpty(dmEntity.getSystemCode()),
+            nullToEmpty(dmEntity.getInfoCode())
         );
+    }
+
+    public Optional<ModuleEvaluationRow> evaluateModuleRow(String dmId, ApplicabilityContext context) {
+        return resolveDescriptor(dmId).map(descriptor -> toEvaluationRow(descriptor, context));
+    }
+
+    public ModuleEvaluationRow toEvaluationRow(DataModuleDescriptor descriptor, ApplicabilityContext context) {
+        DmApplicabilityEvaluation dmApplicability = evaluateDmApplicability(descriptor, context);
+        return new ModuleEvaluationRow(
+            descriptor.dmId(),
+            descriptor.title(),
+            descriptor.systemCode(),
+            descriptor.infoCode(),
+            descriptor.applicability(),
+            descriptor.source(),
+            descriptor.hasPublishedPreview(),
+            dmApplicability.status(),
+            dmApplicability.displayText(),
+            dmApplicability.reason(),
+            dmApplicability.source()
+        );
+    }
+
+    private DmApplicabilityEvaluation evaluateDmApplicability(DataModuleDescriptor descriptor, ApplicabilityContext context) {
+        return dmApplicabilityEvaluator.evaluate(
+            descriptor.dmId(),
+            descriptor.applicability(),
+            descriptor.applicabilitySource(),
+            context
+        );
+    }
+
+    private void validatePmcScopeIfPresent(String dmId, String pmcId) {
+        if (pmcId == null || pmcId.isBlank()) {
+            return;
+        }
+        String requestedCanonical = canonicalDmId(dmId);
+        boolean present = pmcDmRepository.findByPmcIdIgnoreCaseOrderBySortOrder(pmcId).stream()
+            .map(rel -> rel.getId().getDmId())
+            .anyMatch(ref -> ref != null && (
+                ref.equalsIgnoreCase(dmId)
+                || canonicalDmId(ref).equalsIgnoreCase(requestedCanonical)
+            ));
+        if (!present) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Module not found in PMC scope");
+        }
+    }
+
+    private String canonicalDmId(String dmId) {
+        if (dmId == null) {
+            return "";
+        }
+        String normalized = dmId.trim();
+        int issueIdx = normalized.indexOf('_');
+        return (issueIdx > 0 ? normalized.substring(0, issueIdx) : normalized).toUpperCase(Locale.ROOT);
+    }
+
+    public record ModuleEvaluationRow(
+        String dmId,
+        String displayName,
+        String systemCode,
+        String infoCode,
+        Applicability applicability,
+        String source,
+        boolean hasPublishedPreview,
+        ApplicabilityResult dmApplicabilityStatus,
+        String dmApplicabilityDisplayText,
+        String dmApplicabilityReason,
+        String dmApplicabilitySource
+    ) {
     }
 
     private ApplicabilityResponse toApplicabilityResponse(Applicability applicability) {
@@ -281,6 +462,28 @@ public class ModuleService {
     private String stripExtension(String fileName) {
         int idx = fileName.lastIndexOf('.');
         return idx > 0 ? fileName.substring(0, idx) : fileName;
+    }
+
+    private String entryFileName(ZipEntry entry) {
+        String raw = Optional.ofNullable(entry.getName()).orElse("");
+        if (raw.isBlank()) {
+            return "";
+        }
+        String normalized = raw.replace('\\', '/');
+        String fileName = Path.of(normalized).getFileName().toString();
+        if (fileName.contains("..")) {
+            return "";
+        }
+        return fileName;
+    }
+
+    private boolean hasSupportedGraphicExtension(String fileNameUpper) {
+        for (String extension : SUPPORTED_GRAPHIC_EXTENSIONS) {
+            if (fileNameUpper.endsWith(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String firstNonBlank(String... values) {

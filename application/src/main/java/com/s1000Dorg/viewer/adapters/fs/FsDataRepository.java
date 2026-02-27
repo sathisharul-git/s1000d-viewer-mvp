@@ -251,6 +251,10 @@ public class FsDataRepository {
         return csdbMetaDir;
     }
 
+    public Path csdbIcnDir() {
+        return csdbIcnDir;
+    }
+
     public Path csdbRoot() {
         return csdbRoot;
     }

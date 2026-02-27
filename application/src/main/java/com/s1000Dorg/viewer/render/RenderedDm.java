@@ -12,7 +12,8 @@ public record RenderedDm(
     Applicability applicability,
     ApplicabilityResult applicabilityResult,
     List<String> icns,
-    List<String> dmRefs
+    List<String> dmRefs,
+    InlineApplicabilitySummary inlineApplicability
 ) {
 }
 

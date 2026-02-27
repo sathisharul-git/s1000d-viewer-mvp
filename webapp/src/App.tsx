@@ -3,7 +3,14 @@ import { api, authStorage } from "./api/client";
 import { BreadcrumbBar } from "./components/breadcrumb/BreadcrumbBar";
 import { ThreePaneLayout, type PaneWidths } from "./components/layout/ThreePaneLayout";
 import { type ApplicabilityFilters, defaultApplicabilityFilters } from "./types/filters";
-import type { Hotspot, ModuleListItem, ModuleRenderResponse, UserSummary } from "./types/models";
+import type {
+  Hotspot,
+  ModuleListItem,
+  ModuleRenderResponse,
+  PmcListItem,
+  PublicationModuleItem,
+  UserSummary,
+} from "./types/models";
 
 type ViewerLayoutState = {
   leftWidth: number;
@@ -22,7 +29,15 @@ const defaultLayoutState: ViewerLayoutState = {
 };
 
 function hasRole(roles: string[], role: string): boolean {
-  return roles.includes(role);
+  const targets = new Set<string>([role]);
+  if (role === "ROLE_ADMIN") {
+    targets.add("ROLE_S1000D-ADMIN");
+  } else if (role === "ROLE_ENGINEER") {
+    targets.add("ROLE_S1000D-ENGINEER");
+  } else if (role === "ROLE_VIEWER") {
+    targets.add("ROLE_S1000D-VIEWER");
+  }
+  return roles.some((candidate) => targets.has(candidate));
 }
 
 function escapeRegex(raw: string): string {
@@ -177,6 +192,27 @@ function detectHotspotIdFromSvgTarget(target: HTMLElement, knownHotspots: Hotspo
   return resolveKnownHotspotId(idNode.getAttribute("id") ?? "", knownHotspots);
 }
 
+function publicationToModuleListItem(item: PublicationModuleItem): ModuleListItem {
+  const source =
+    item.dmApplicabilitySource === "published" ||
+    item.dmApplicabilitySource === "meta" ||
+    item.dmApplicabilitySource === "metadata" ||
+    item.dmApplicabilitySource === "dmHeader" ||
+    item.dmApplicabilitySource === "none"
+      ? item.dmApplicabilitySource
+      : "none";
+  return {
+    dmId: item.dmId,
+    title: item.displayName || item.dmId,
+    applicability: item.applicability ?? { aircraft: [], engine: [], variant: [] },
+    source: item.source,
+    hasPublishedPreview: item.hasPublishedPreview,
+    applicabilityResult: item.dmApplicabilityStatus,
+    applicabilityReason: item.dmApplicabilityReason || "no constraints requested",
+    applicabilitySource: source,
+  };
+}
+
 export function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -184,10 +220,15 @@ export function App() {
   const [userNameDisplay, setUserNameDisplay] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [errorFading, setErrorFading] = useState(false);
+  const [noticeFading, setNoticeFading] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [catalog, setCatalog] = useState<ModuleListItem[]>([]);
   const [modules, setModules] = useState<ModuleListItem[]>([]);
+  const [pmcs, setPmcs] = useState<PmcListItem[]>([]);
+  const [selectedPmcId, setSelectedPmcId] = useState("");
   const [filters, setFilters] = useState<ApplicabilityFilters>(defaultApplicabilityFilters);
   const [moduleSearch, setModuleSearch] = useState("");
 
@@ -211,15 +252,62 @@ export function App() {
   const [uploadVariant, setUploadVariant] = useState("");
   const [uploadIcnId, setUploadIcnId] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [zipBusy, setZipBusy] = useState(false);
 
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [showUsers, setShowUsers] = useState(false);
+  const [reindexBusy, setReindexBusy] = useState(false);
   const hotspotRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const graphicSvgRef = useRef<HTMLDivElement | null>(null);
+  const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
+  const zipFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     writeLayoutState(layout);
   }, [layout]);
+
+  useEffect(() => {
+    if (!notice) {
+      setNoticeFading(false);
+      return;
+    }
+
+    setNoticeFading(false);
+    const fadeTimer = window.setTimeout(() => {
+      setNoticeFading(true);
+    }, 4800);
+    const clearTimer = window.setTimeout(() => {
+      setNotice("");
+      setNoticeFading(false);
+    }, 6000);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) {
+      setErrorFading(false);
+      return;
+    }
+
+    setErrorFading(false);
+    const fadeTimer = window.setTimeout(() => {
+      setErrorFading(true);
+    }, 4800);
+    const clearTimer = window.setTimeout(() => {
+      setError("");
+      setErrorFading(false);
+    }, 6000);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [error]);
 
   const aircraftOptions = useMemo(
     () => Array.from(new Set(catalog.flatMap((m) => m.applicability.aircraft))).sort(),
@@ -246,6 +334,15 @@ export function App() {
     );
   }, [moduleSearch, modules]);
 
+  async function loadModulesForScope(currentToken: string, nextFilters: ApplicabilityFilters): Promise<ModuleListItem[]> {
+    if (selectedPmcId) {
+      const response = await api.publicationModules(currentToken, selectedPmcId, nextFilters);
+      return response.modules.map(publicationToModuleListItem);
+    }
+    const response = await api.modules(currentToken, nextFilters);
+    return response.modules;
+  }
+
   useEffect(() => {
     if (!token) {
       return;
@@ -262,10 +359,20 @@ export function App() {
 
   useEffect(() => {
     if (!token) {
+      setPmcs([]);
+      setSelectedPmcId("");
       return;
     }
-    api.modules(token, defaultApplicabilityFilters)
-      .then((response) => setCatalog(response.modules))
+    api.pmcs(token)
+      .then((rows) => {
+        setPmcs(rows);
+        setSelectedPmcId((current) => {
+          if (current && rows.some((row) => row.pmcId === current)) {
+            return current;
+          }
+          return rows[0]?.pmcId ?? "";
+        });
+      })
       .catch((err: unknown) => setError(String(err)));
   }, [token]);
 
@@ -273,9 +380,28 @@ export function App() {
     if (!token) {
       return;
     }
-    api.modules(token, filters)
-      .then((response) => {
-        const rows = response.modules;
+    loadModulesForScope(token, defaultApplicabilityFilters)
+      .then((rows) => setCatalog(rows))
+      .catch((err: unknown) => setError(String(err)));
+  }, [selectedPmcId, token]);
+
+  useEffect(() => {
+    setSelectedDmId("");
+    setSelectedContent(null);
+    setSelectedIcnId("");
+    setSelectedHotspotId("");
+    setGraphicSvg("");
+    setHotspotsByIcn({});
+    setLoadingHotspotsByIcn({});
+    setHotspotErrorsByIcn({});
+  }, [selectedPmcId]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    loadModulesForScope(token, filters)
+      .then((rows) => {
         setModules(rows);
         if (!rows.find((row) => row.dmId === selectedDmId)) {
           const nextDmId = rows[0]?.dmId ?? "";
@@ -283,7 +409,7 @@ export function App() {
         }
       })
       .catch((err: unknown) => setError(String(err)));
-  }, [token, filters]);
+  }, [filters, selectedPmcId, token]);
 
   useEffect(() => {
     if (!token || !selectedDmId) {
@@ -300,7 +426,9 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
-        const content = await api.moduleRender(token, selectedDmId, filters);
+        const content = await api.moduleRender(token, selectedDmId, filters, {
+          pmcId: selectedPmcId || undefined,
+        });
         if (cancelled) {
           return;
         }
@@ -329,7 +457,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [filters, selectedDmId, token]);
+  }, [filters, selectedDmId, selectedPmcId, token]);
 
   useEffect(() => {
     const icnIds = selectedContent?.assets.icns ?? [];
@@ -504,6 +632,8 @@ export function App() {
     setSelectedIcnId("");
     setSelectedHotspotId("");
     setSelectedDmId("");
+    setPmcs([]);
+    setSelectedPmcId("");
     setCatalog([]);
     setModules([]);
     setShowUpload(false);
@@ -515,6 +645,7 @@ export function App() {
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setBusy(true);
     try {
       const response = await api.login(username, password);
@@ -539,6 +670,7 @@ export function App() {
     }
 
     setError("");
+    setNotice("");
     try {
       await api.upload(token, {
         file: uploadFile,
@@ -550,11 +682,11 @@ export function App() {
       });
 
       const [catalogRows, filteredRows] = await Promise.all([
-        api.modules(token, defaultApplicabilityFilters),
-        api.modules(token, filters),
+        loadModulesForScope(token, defaultApplicabilityFilters),
+        loadModulesForScope(token, filters),
       ]);
-      setCatalog(catalogRows.modules);
-      setModules(filteredRows.modules);
+      setCatalog(catalogRows);
+      setModules(filteredRows);
 
       setUploadFile(null);
       setUploadTitle("");
@@ -563,6 +695,10 @@ export function App() {
       setUploadVariant("");
       setUploadIcnId("");
       setShowUpload(false);
+      setNotice("Module uploaded and indexed successfully.");
+      if (uploadFileInputRef.current) {
+        uploadFileInputRef.current.value = "";
+      }
     } catch (err) {
       setError(String(err));
     }
@@ -646,11 +782,86 @@ export function App() {
     if (!token) {
       return;
     }
+    setError("");
     try {
       setUsers(await api.users(token));
       setShowUsers(true);
     } catch (err) {
       setError(String(err));
+    }
+  }
+
+  async function handleZipImport(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !zipFile) {
+      setError("Select a ZIP file to import.");
+      return;
+    }
+    setError("");
+    setNotice("");
+    setZipBusy(true);
+    try {
+      const result = await api.importZip(token, zipFile);
+      const [catalogRows, filteredRows] = await Promise.all([
+        loadModulesForScope(token, defaultApplicabilityFilters),
+        loadModulesForScope(token, filters),
+      ]);
+      setCatalog(catalogRows);
+      setModules(filteredRows);
+      if (!filteredRows.find((row) => row.dmId === selectedDmId)) {
+        setSelectedDmId(filteredRows[0]?.dmId ?? "");
+      }
+      setZipFile(null);
+      setUploadFile(null);
+      setUploadTitle("");
+      setUploadAircraft("");
+      setUploadEngine("");
+      setUploadVariant("");
+      setUploadIcnId("");
+      if (zipFileInputRef.current) {
+        zipFileInputRef.current.value = "";
+      }
+      if (uploadFileInputRef.current) {
+        uploadFileInputRef.current.value = "";
+      }
+      setShowUpload(false);
+      setNotice(result.message);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setZipBusy(false);
+    }
+  }
+
+  async function handleReindex() {
+    if (!token) {
+      return;
+    }
+    setError("");
+    setNotice("");
+    setReindexBusy(true);
+    try {
+      await api.reindex(token);
+      const [catalogRows, filteredRows] = await Promise.all([
+        loadModulesForScope(token, defaultApplicabilityFilters),
+        loadModulesForScope(token, filters),
+      ]);
+      setCatalog(catalogRows);
+      setModules(filteredRows);
+
+      if (!filteredRows.find((row) => row.dmId === selectedDmId)) {
+        setSelectedDmId(filteredRows[0]?.dmId ?? "");
+      } else if (selectedDmId) {
+        const refreshed = await api.moduleRender(token, selectedDmId, filters, {
+          pmcId: selectedPmcId || undefined,
+        });
+        setSelectedContent(refreshed);
+      }
+      setNotice("Reindex completed successfully.");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setReindexBusy(false);
     }
   }
 
@@ -705,11 +916,6 @@ export function App() {
           <p>{userNameDisplay} ({roles.join(", ")})</p>
         </div>
         <div className="top-actions">
-          {canUpload ? (
-            <button type="button" className={showUpload ? "action-btn active" : "action-btn"} onClick={() => setShowUpload((open) => !open)}>
-              {showUpload ? "Hide Upload" : "Upload Module"}
-            </button>
-          ) : null}
           {isAdmin ? (
             <button
               type="button"
@@ -732,6 +938,9 @@ export function App() {
       </header>
 
       <BreadcrumbBar
+        pmcs={pmcs}
+        selectedPmcId={selectedPmcId}
+        onSelectPmc={setSelectedPmcId}
         selectedDmLabel={selectedDmLabel}
         selectedGraphicId={selectedIcnId}
         filters={filters}
@@ -739,21 +948,47 @@ export function App() {
         engineOptions={engineOptions}
         variantOptions={variantOptions}
         onApplyFilters={setFilters}
+        canUpload={canUpload}
+        showUpload={showUpload}
+        onToggleUpload={() => setShowUpload((open) => !open)}
+        canReindex={isAdmin}
+        reindexBusy={reindexBusy}
+        onReindex={handleReindex}
       />
 
-      {error ? <div className="error floating">{error}</div> : null}
+      {error ? <div className={errorFading ? "error floating fading" : "error floating"}>{error}</div> : null}
+      {notice ? <div className={noticeFading ? "notice floating fading" : "notice floating"}>{notice}</div> : null}
 
       {showUpload && canUpload ? (
         <section className="utility-panel">
-          <form className="upload-grid" onSubmit={handleUpload}>
-            <input type="file" accept=".xml" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
-            <input placeholder="Title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
-            <input placeholder="Aircraft" value={uploadAircraft} onChange={(e) => setUploadAircraft(e.target.value)} />
-            <input placeholder="Engine" value={uploadEngine} onChange={(e) => setUploadEngine(e.target.value)} />
-            <input placeholder="Variant" value={uploadVariant} onChange={(e) => setUploadVariant(e.target.value)} />
-            <input placeholder="ICN ID" value={uploadIcnId} onChange={(e) => setUploadIcnId(e.target.value)} />
-            <button type="submit">Upload</button>
-          </form>
+          <div className="utility-section">
+            <div className="utility-title">Upload Data Module XML</div>
+            <form className="upload-grid" onSubmit={handleUpload}>
+              <input ref={uploadFileInputRef} type="file" accept=".xml" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
+              <input placeholder="Title" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
+              <input placeholder="Aircraft" value={uploadAircraft} onChange={(e) => setUploadAircraft(e.target.value)} />
+              <input placeholder="Engine" value={uploadEngine} onChange={(e) => setUploadEngine(e.target.value)} />
+              <input placeholder="Variant" value={uploadVariant} onChange={(e) => setUploadVariant(e.target.value)} />
+              <input placeholder="ICN ID" value={uploadIcnId} onChange={(e) => setUploadIcnId(e.target.value)} />
+              <button type="submit">Upload</button>
+            </form>
+          </div>
+          <div className="utility-divider" />
+          <div className="utility-section">
+            <div className="utility-title">Import Dataset ZIP</div>
+            <form className="zip-import-form" onSubmit={handleZipImport}>
+              <input
+                ref={zipFileInputRef}
+                type="file"
+                accept=".zip,application/zip"
+                onChange={(event) => setZipFile(event.target.files?.[0] ?? null)}
+              />
+              <button type="submit" disabled={zipBusy}>
+                {zipBusy ? "Importing..." : "Import ZIP Dataset"}
+              </button>
+            </form>
+            <div className="utility-help">Accepted: DMC-*.xml, PMC-*.xml, ICN-*.(cgm|svg|png|jpg|jpeg|gif)</div>
+          </div>
         </section>
       ) : null}
 
@@ -821,6 +1056,16 @@ export function App() {
                 <span className="meta-note" title={selectedContent.meta.applicabilityReason}>
                   {selectedContent.meta.applicabilityReason}
                 </span>
+                {selectedContent.applicability?.displayText ? (
+                  <span className="meta-note" title="DM-level applicability text">
+                    {selectedContent.applicability.displayText}
+                  </span>
+                ) : null}
+                {selectedContent.inlineApplicability && selectedContent.inlineApplicability.mode !== "NONE" ? (
+                  <span className="meta-note" title="Inline applicability filtering applied">
+                    Hidden: {selectedContent.inlineApplicability.removedCount}, Visible: {selectedContent.inlineApplicability.keptCount}
+                  </span>
+                ) : null}
               </div>
             ) : null}
 

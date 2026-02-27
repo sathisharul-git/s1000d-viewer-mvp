@@ -63,6 +63,9 @@ class S1000dViewerApplicationTests {
         )
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.source").value("published"))
+            .andExpect(jsonPath("$.applicability.dmStatus").value("APPLICABLE"))
+            .andExpect(jsonPath("$.applicability.source").value("metadata"))
+            .andExpect(jsonPath("$.inlineApplicability.mode").value("NONE"))
             .andExpect(jsonPath("$.meta.applicabilityResult").value("APPLICABLE"))
             .andExpect(jsonPath("$.meta.applicabilityReason").isNotEmpty())
             .andExpect(jsonPath("$.assets.icns", hasItem("ICN-SAMPLE-AAA-0001-A-01")));

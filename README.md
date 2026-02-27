@@ -48,6 +48,17 @@ This repository contains an S1000D viewer with Oracle-backed CSDB metadata, vaul
 Backend: `http://localhost:8080`  
 Webapp: `http://localhost:5173`
 
+## Importing ZIP datasets
+- Login as `ADMIN` or `ENGINEER`.
+- Open `Upload Module`.
+- Use `Import ZIP Dataset` and select your archive.
+- Supported file patterns inside ZIP (any folder depth):
+  - `DMC-*.xml` -> imported to `data/csdb/dm/`
+  - `PMC-*.xml` -> imported to `data/csdb/`
+  - `ICN-*.(cgm|svg|png|jpg|jpeg|gif)` -> imported to `data/csdb/icn/`
+- After import, the app auto-runs reindex and refreshes the module list.
+- You can also trigger manual reindex from the breadcrumb `Reindex` button (Admin).
+
 ## Runtime configuration
 - Base package: `com.s1000Dorg.viewer`
 - Main config file: `application/src/main/resources/application.yml`
@@ -75,4 +86,3 @@ Used only when profile `dev-auth` is enabled.
 - `docs/applicability-phase1.md`
 - `docs/applicability-phase2.md`
 - `docs/applicability-phase3.md`
-

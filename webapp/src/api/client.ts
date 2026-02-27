@@ -3,8 +3,11 @@ import type {
   LoginResponse,
   ModuleListResponse,
   ModuleRenderResponse,
+  PmcListItem,
+  PublicationModulesResponse,
   UploadResponse,
   UserSummary,
+  ZipImportResponse,
 } from "../types/models";
 
 const TOKEN_KEY = "s1000d.jwt";
@@ -18,6 +21,25 @@ function buildQuery(params: Record<string, string>) {
   });
   const query = searchParams.toString();
   return query ? `?${query}` : "";
+}
+
+function withProductAttributes(
+  base: Record<string, string>,
+  productAttributes?: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = { ...base };
+  if (!productAttributes) {
+    return merged;
+  }
+  Object.entries(productAttributes).forEach(([key, value]) => {
+    const trimmedKey = key.trim();
+    const trimmedValue = value.trim();
+    if (!trimmedKey || !trimmedValue) {
+      return;
+    }
+    merged[`pa.${trimmedKey}`] = trimmedValue;
+  });
+  return merged;
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -60,9 +82,36 @@ export const api = {
   modules: (token: string, filters: { aircraft: string; engine: string; variant: string }) =>
     request<ModuleListResponse>(`/api/modules${buildQuery(filters)}`, { method: "GET" }, token),
 
-  moduleRender: (token: string, dmId: string, filters: { aircraft: string; engine: string; variant: string }) =>
+  moduleRender: (
+    token: string,
+    dmId: string,
+    filters: { aircraft: string; engine: string; variant: string },
+    options?: { pmcId?: string; productAttributes?: Record<string, string> },
+  ) =>
     request<ModuleRenderResponse>(
-      `/api/modules/${encodeURIComponent(dmId)}/render${buildQuery(filters)}`,
+      `/api/modules/${encodeURIComponent(dmId)}/render${buildQuery(
+        withProductAttributes(
+          {
+            ...filters,
+            pmcId: options?.pmcId?.trim() ?? "",
+          },
+          options?.productAttributes,
+        ),
+      )}`,
+      { method: "GET" },
+      token,
+    ),
+
+  pmcs: (token: string) => request<PmcListItem[]>("/api/pmc", { method: "GET" }, token),
+
+  publicationModules: (
+    token: string,
+    pmcId: string,
+    filters: { aircraft: string; engine: string; variant: string },
+    productAttributes?: Record<string, string>,
+  ) =>
+    request<PublicationModulesResponse>(
+      `/api/publications/${encodeURIComponent(pmcId)}/modules${buildQuery(withProductAttributes(filters, productAttributes))}`,
       { method: "GET" },
       token,
     ),
@@ -87,4 +136,10 @@ export const api = {
     request<Hotspot[]>(`/api/graphics/${encodeURIComponent(icnId)}/hotspots`, { method: "GET" }, token),
 
   users: (token: string) => request<UserSummary[]>("/api/admin/users", { method: "GET" }, token),
+  reindex: (token: string) => request<string>("/api/admin/reindex", { method: "POST" }, token),
+  importZip: (token: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ZipImportResponse>("/api/modules/import-zip", { method: "POST", body: form }, token);
+  },
 };

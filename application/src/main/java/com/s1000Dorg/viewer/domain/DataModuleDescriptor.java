@@ -7,7 +7,9 @@ public record DataModuleDescriptor(
     String applicabilitySource,
     String source,
     boolean hasPublishedPreview,
-    String primaryIcnId
+    String primaryIcnId,
+    String systemCode,
+    String infoCode
 ) {
 }
 

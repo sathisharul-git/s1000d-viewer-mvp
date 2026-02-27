@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pm xmlns:xlink="http://www.w3.org/1999/xlink">
+  <identAndStatusSection>
+    <pmAddress>
+      <pmIdent>
+        <pmCode modelIdentCode="SAMPLE" pmIssuer="AAA" pmNumber="C3002" pmVolume="EPWG1"/>
+      </pmIdent>
+      <pmAddressItems>
+        <pmTitle>Sample Publication</pmTitle>
+      </pmAddressItems>
+    </pmAddress>
+  </identAndStatusSection>
+  <content>
+    <pmEntry>
+      <dmRef xlink:href="URN:S1000D:DMC-SAMPLE-AAA-00-00-00-00A-040A-C" xlink:type="simple">Adjustment</dmRef>
+      <dmRef xlink:href="URN:S1000D:DMC-SAMPLE-AAA-00-00-00-00A-050A-C" xlink:type="simple">Inspection</dmRef>
+      <dmRef xlink:href="URN:S1000D:DMC-SAMPLE-AAA-00-00-00-00A-060A-C" xlink:type="simple">Unknown</dmRef>
+    </pmEntry>
+  </content>
+</pm>

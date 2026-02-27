@@ -1,5 +1,7 @@
 package com.s1000Dorg.viewer.modules;
 
+import com.s1000Dorg.viewer.applicability.ApplicabilityContextFactory;
+import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,9 +16,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class ModuleController {
 
     private final ModuleService moduleService;
+    private final ApplicabilityContextFactory applicabilityContextFactory;
 
-    public ModuleController(ModuleService moduleService) {
+    public ModuleController(ModuleService moduleService, ApplicabilityContextFactory applicabilityContextFactory) {
         this.moduleService = moduleService;
+        this.applicabilityContextFactory = applicabilityContextFactory;
     }
 
     @GetMapping
@@ -24,20 +28,29 @@ public class ModuleController {
     public ModuleListResponse listModules(
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine,
-        @RequestParam(required = false) String variant
+        @RequestParam(required = false) String variant,
+        @RequestParam Map<String, String> requestParams
     ) {
-        return moduleService.listModules(aircraft, engine, variant);
+        return moduleService.listModules(
+            applicabilityContextFactory.fromRequest(aircraft, engine, variant, requestParams)
+        );
     }
 
     @GetMapping("/{dmId}/render")
     @PreAuthorize("@authorizationService.canViewDm(authentication, #dmId, #aircraft, #engine, #variant)")
     public ModuleRenderResponse renderModule(
         @PathVariable String dmId,
+        @RequestParam(required = false) String pmcId,
         @RequestParam(required = false) String aircraft,
         @RequestParam(required = false) String engine,
-        @RequestParam(required = false) String variant
+        @RequestParam(required = false) String variant,
+        @RequestParam Map<String, String> requestParams
     ) {
-        return moduleService.renderModule(dmId, aircraft, engine, variant);
+        return moduleService.renderModule(
+            dmId,
+            pmcId,
+            applicabilityContextFactory.fromRequest(aircraft, engine, variant, requestParams)
+        );
     }
 
     @PostMapping("/upload")
@@ -51,6 +64,12 @@ public class ModuleController {
         @RequestParam(required = false) String icnId
     ) {
         return moduleService.uploadModule(file, aircraft, engine, variant, title, icnId);
+    }
+
+    @PostMapping("/import-zip")
+    @PreAuthorize("@authorizationService.canUploadModule(authentication)")
+    public ModuleZipImportResponse importZip(@RequestParam("file") MultipartFile file) {
+        return moduleService.importZip(file);
     }
 }
 

@@ -21,7 +21,6 @@ services:
       LDAP_ADMIN_PASSWORD: "admin"
       LDAP_TLS: "false"
     volumes:
-      - ./dev/ldap/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-bootstrap.ldif:ro
       - s1000d_ldap_data:/var/lib/ldap
       - s1000d_ldap_config:/etc/ldap/slapd.d
   opa:

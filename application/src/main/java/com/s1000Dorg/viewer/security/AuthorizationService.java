@@ -3,6 +3,7 @@ package com.s1000Dorg.viewer.security;
 import com.s1000Dorg.viewer.config.OpaProperties;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -88,15 +89,16 @@ public class AuthorizationService {
         Set<String> roles = authentication.getAuthorities().stream()
             .map(GrantedAuthority::getAuthority)
             .collect(Collectors.toSet());
+        Set<String> normalizedRoles = canonicalizeRoles(roles);
 
         Map<String, Object> input = new LinkedHashMap<>();
-        input.put("user", Map.of("name", authentication.getName(), "roles", roles));
+        input.put("user", Map.of("name", authentication.getName(), "roles", normalizedRoles));
         input.put("action", action);
         input.put("resource", sanitize(resource));
         input.put("context", sanitize(context));
 
         if (!opaProperties.isEnabled()) {
-            return roleFallback(action, roles);
+            return roleFallback(action, normalizedRoles);
         }
 
         Optional<Boolean> decision = opaClient.evaluate(input);
@@ -105,10 +107,10 @@ public class AuthorizationService {
         }
 
         if (isDevAuthProfileActive()) {
-            return roleFallback(action, roles);
+            return roleFallback(action, normalizedRoles);
         }
         if (opaProperties.isAllowReadOnError() && VIEW_ACTIONS.contains(action)) {
-            return roleFallback(action, roles);
+            return roleFallback(action, normalizedRoles);
         }
         return false;
     }
@@ -128,6 +130,30 @@ public class AuthorizationService {
             return isAdmin;
         }
         return false;
+    }
+
+    private Set<String> canonicalizeRoles(Set<String> roles) {
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String role : roles) {
+            if (role == null || role.isBlank()) {
+                continue;
+            }
+            String upper = role.toUpperCase();
+            if (upper.contains("ADMIN")) {
+                normalized.add("ROLE_ADMIN");
+                continue;
+            }
+            if (upper.contains("ENGINEER")) {
+                normalized.add("ROLE_ENGINEER");
+                continue;
+            }
+            if (upper.contains("VIEWER")) {
+                normalized.add("ROLE_VIEWER");
+                continue;
+            }
+            normalized.add(role);
+        }
+        return normalized;
     }
 
     private Map<String, Object> sanitize(Map<String, Object> values) {
@@ -170,4 +196,3 @@ public class AuthorizationService {
         return Set.of(environment.getActiveProfiles()).contains("dev-auth");
     }
 }
-

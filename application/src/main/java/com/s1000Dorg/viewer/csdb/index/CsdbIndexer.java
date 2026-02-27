@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -95,7 +96,11 @@ public class CsdbIndexer {
 
     private void indexDmFiles() {
         for (Path path : repository.listDmXmlFiles()) {
-            indexSingleDm(path);
+            try {
+                indexSingleDm(path);
+            } catch (RuntimeException ex) {
+                log.warn("Skipping DM file {} during indexing: {}", path.getFileName(), ex.getMessage());
+            }
         }
     }
 
@@ -109,7 +114,12 @@ public class CsdbIndexer {
         }
 
         String xml = readFile(path);
-        Document document = parseXml(xml);
+        Document document;
+        try {
+            document = parseXml(xml);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("Failed to parse DM XML " + path.getFileName(), ex);
+        }
 
         dm.setDmId(dmId);
         dm.setVaultPath(relativePath);
@@ -142,32 +152,58 @@ public class CsdbIndexer {
     }
 
     private void indexPmcFiles() {
+        Map<String, String> dmByCanonical = dmRepository.findAll().stream()
+            .collect(java.util.stream.Collectors.toMap(
+                dm -> canonicalDmId(dm.getDmId()),
+                DmEntity::getDmId,
+                (first, second) -> first,
+                java.util.LinkedHashMap::new
+            ));
+
         for (Path path : repository.listPmcXmlFiles()) {
             String pmcId = stripExtension(path.getFileName().toString());
             String relativePath = toVaultRelativePath(path);
             String fileHash = vaultService.computeFileHash(path);
+            String xml = readFile(path);
+            Set<String> dmRefs = extractMatches(DM_REF_PATTERN, xml.toUpperCase(Locale.ROOT));
 
             PmcEntity pmc = pmcRepository.findByPmcIdIgnoreCase(pmcId).orElseGet(PmcEntity::new);
-            if (isUnchanged(pmc.getFileHash(), fileHash) && relativePath.equals(pmc.getVaultPath())) {
-                continue;
+            if (!isUnchanged(pmc.getFileHash(), fileHash) || !relativePath.equals(pmc.getVaultPath())) {
+                pmc.setPmcId(pmcId);
+                pmc.setVaultPath(relativePath);
+                pmc.setFileHash(fileHash);
+                pmc.setLastIndexed(LocalDateTime.now());
+                pmc.setTitle(firstNonBlank(extractFirstTag(xml, "pmTitle"), pmcId));
+                pmcRepository.save(pmc);
             }
-
-            String xml = readFile(path);
-            pmc.setPmcId(pmcId);
-            pmc.setVaultPath(relativePath);
-            pmc.setFileHash(fileHash);
-            pmc.setLastIndexed(LocalDateTime.now());
-            pmc.setTitle(firstNonBlank(extractFirstTag(xml, "pmTitle"), pmcId));
-            pmcRepository.save(pmc);
 
             pmcDmRepository.deleteByPmcIdIgnoreCase(pmcId);
             int sortOrder = 1;
-            for (String dmRef : extractMatches(DM_REF_PATTERN, xml.toUpperCase(Locale.ROOT))) {
-                if (dmRepository.findByDmIdIgnoreCase(dmRef).isPresent()) {
-                    pmcDmRepository.save(new PmcDmEntity(new PmcDmId(pmcId, dmRef), sortOrder++));
+            for (String dmRef : dmRefs) {
+                String resolvedDmId = resolveDmReference(dmRef, dmByCanonical);
+                if (resolvedDmId == null || resolvedDmId.isBlank()) {
+                    continue;
                 }
+                pmcDmRepository.save(new PmcDmEntity(new PmcDmId(pmcId, resolvedDmId), sortOrder++));
             }
         }
+    }
+
+    private String resolveDmReference(String dmRef, Map<String, String> dmByCanonical) {
+        Optional<DmEntity> exact = dmRepository.findByDmIdIgnoreCase(dmRef);
+        if (exact.isPresent()) {
+            return exact.get().getDmId();
+        }
+        return dmByCanonical.get(canonicalDmId(dmRef));
+    }
+
+    private String canonicalDmId(String dmId) {
+        if (dmId == null || dmId.isBlank()) {
+            return "";
+        }
+        String normalized = dmId.trim().toUpperCase(Locale.ROOT);
+        int issueIdx = normalized.indexOf('_');
+        return issueIdx > 0 ? normalized.substring(0, issueIdx) : normalized;
     }
 
     private void upsertIcn(Path path) {
@@ -218,6 +254,7 @@ public class CsdbIndexer {
 
     private Document parseXml(String xml) {
         try {
+            String sanitized = sanitizeXml(xml);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             try {
                 factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
@@ -229,7 +266,7 @@ public class CsdbIndexer {
             }
             factory.setNamespaceAware(false);
             factory.setExpandEntityReferences(false);
-            return factory.newDocumentBuilder().parse(new InputSource(new java.io.StringReader(xml)));
+            return factory.newDocumentBuilder().parse(new InputSource(new java.io.StringReader(sanitized)));
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to parse XML during CSDB indexing", ex);
         }
@@ -237,10 +274,33 @@ public class CsdbIndexer {
 
     private String readFile(Path path) {
         try {
-            return Files.readString(path, StandardCharsets.UTF_8);
+            return sanitizeXml(Files.readString(path, StandardCharsets.UTF_8));
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to read file " + path, ex);
         }
+    }
+
+    private String sanitizeXml(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        String text = raw;
+        if (!text.isEmpty() && text.charAt(0) == '\uFEFF') {
+            text = text.substring(1);
+        }
+        int firstSignificant = 0;
+        while (firstSignificant < text.length()) {
+            char c = text.charAt(firstSignificant);
+            if (Character.isWhitespace(c)) {
+                firstSignificant++;
+                continue;
+            }
+            if (c == '<') {
+                break;
+            }
+            firstSignificant++;
+        }
+        return firstSignificant > 0 ? text.substring(firstSignificant) : text;
     }
 
     private String extractDisplayName(Document document, String fallback) {

@@ -34,7 +34,7 @@ s1000d:
     manager-password: ${S1000D_LDAP_MANAGER_PASS:admin}
     user-dn-pattern: ${S1000D_LDAP_USER_DN_PATTERN:uid={0},ou=people}
     group-search-base: ${S1000D_LDAP_GROUP_SEARCH_BASE:ou=groups}
-    group-search-filter: ${S1000D_LDAP_GROUP_SEARCH_FILTER:(member=uid={0},ou=people,dc=s1000d,dc=org)}
+    group-search-filter: ${S1000D_LDAP_GROUP_SEARCH_FILTER:(member={0})}
   opa:
     enabled: ${S1000D_OPA_ENABLED:true}
     url: ${S1000D_OPA_URL:http://localhost:8181}

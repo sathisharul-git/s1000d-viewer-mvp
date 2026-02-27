@@ -1,16 +1,16 @@
 {
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive",
-    "java.jdt.ls.java.home": "${workspaceFolder}\\.tools\\jdk21\\jdk-21.0.4+7",
+    "java.jdt.ls.java.home": "C:\\\\Program Files\\\\jdk21.0.10_7",
     "java.configuration.runtimes": [
         {
             "name": "JavaSE-21",
-            "path": "${workspaceFolder}\\.tools\\jdk21\\jdk-21.0.4+7",
+            "path": "C:\\\\Program Files\\\\jdk21.0.10_7",
             "default": true
         },
         {
             "name": "JavaSE-17",
-            "path": "${workspaceFolder}\\.tools\\jdk17\\jdk-17.0.18+8"
+            "path": "C:\\\\Program Files\\\\jdk17.0.18_9"
         }
     ]
 }

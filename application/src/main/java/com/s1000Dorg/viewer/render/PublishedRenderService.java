@@ -64,7 +64,8 @@ public class PublishedRenderService {
             applicability,
             applicabilityResult,
             icns,
-            dmRefs
+            dmRefs,
+            InlineApplicabilitySummary.none()
         ));
     }
 
